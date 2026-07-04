@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Predictive Energy Routing using Hybrid ML-A* Optimization — Smart Grid Self-Healing System">
+    <title>PowerGrid — Predictive Energy Routing</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+</head>
+<body>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="loader-ring"></div>
+        <div class="loader-text">Initializing PowerGrid</div>
+        <div class="loader-subtext">Running ML pipeline & building grid...</div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <a href="#" class="nav-logo">
+                <span class="logo-icon">⚡</span>
+                <span>PowerGrid</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#grid-section">Grid</a></li>
+                <li><a href="#ml-section">ML Model</a></li>
+                <li><a href="#routes-section">Routes</a></li>
+                <li><a href="#healing-section">Self-Healing</a></li>
+                <li><a href="#congestion-section">Congestion</a></li>
+            </ul>
+            <div class="nav-status">
+                <span class="status-dot"></span>
+                <span>System Online</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-badge">
+                <span>🧠</span>
+                <span>ML-Powered Smart Grid</span>
+            </div>
+            <h1>
+                <span class="gradient-text">Predictive Energy Routing</span><br>
+                Hybrid ML–A* Optimization
+            </h1>
+            <p class="subtitle">
+                An intelligent, self-healing power grid system that combines Machine Learning
+                with graph-based A* pathfinding to predict congestion and dynamically
+                reroute energy through optimal transmission paths.
+            </p>
+            <div class="hero-stats">
+                <div class="hero-stat">
+                    <div class="stat-value cyan" id="stat-r2">—</div>
+                    <div class="stat-label">ML R² Score</div>
+                </div>
+                <div class="hero-stat">
+                    <div class="stat-value green" id="stat-nodes">—</div>
+                    <div class="stat-label">Grid Nodes</div>
+                </div>
+                <div class="hero-stat">
+                    <div class="stat-value purple" id="stat-edges">—</div>
+                    <div class="stat-label">Transmission Lines</div>
+                </div>
+                <div class="hero-stat">
+                    <div class="stat-value orange" id="stat-improvement">—</div>
+                    <div class="stat-label">Congestion Reduction</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Grid Visualization -->
+    <section id="grid-section" class="section">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-tag">Interactive Grid</div>
+                <h2 class="section-title">Power Grid Topology</h2>
+                <p class="section-desc">
+                    Explore the 18-node grid. Edges are color-coded by ML-predicted congestion.
+                    Select source and target nodes to compute custom routes.
+                </p>
+            </div>
+            <div class="grid-viz-container">
+                <div class="grid-svg-wrapper">
+                    <svg id="grid-svg" viewBox="-20 -10 540 440" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <filter id="glow-green">
+                                <feGaussianBlur stdDeviation="4" result="blur"/>
+                                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                            </filter>
+                            <filter id="glow-cyan">
+                                <feGaussianBlur stdDeviation="3" result="blur"/>
+                                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                            </filter>
+                            <filter id="glow-red">
+                                <feGaussianBlur stdDeviation="4" result="blur"/>
+                                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                            </filter>
+                            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+                                <polygon points="0 0, 10 3.5, 0 7" fill="#00ff88"/>
+                            </marker>
+                        </defs>
+                        <g id="edges-layer"></g>
+                        <g id="route-layer"></g>
+                        <g id="nodes-layer"></g>
+                        <g id="labels-layer"></g>
+                    </svg>
+                    <div class="edge-tooltip" id="edge-tooltip">
+                        <div class="tt-label" id="tt-label">—</div>
+                        <div class="tt-row"><span class="tt-key">Congestion</span><span class="tt-val" id="tt-cong">—</span></div>
+                        <div class="tt-row"><span class="tt-key">Resistance</span><span class="tt-val" id="tt-res">—</span></div>
+                        <div class="tt-row"><span class="tt-key">Length</span><span class="tt-val" id="tt-len">—</span></div>
+                        <div class="tt-row"><span class="tt-key">Age</span><span class="tt-val" id="tt-age">—</span></div>
+                    </div>
+                </div>
+                <div class="grid-controls">
+                    <div class="control-card glass-card">
+                        <h3>🗺️ Route Finder</h3>
+                        <div class="node-selector">
+                            <div class="select-group">
+                                <label>Source Node</label>
+                                <select id="source-select"></select>
+                            </div>
+                            <div class="select-group">
+                                <label>Target Node</label>
+                                <select id="target-select"></select>
+                            </div>
+                            <button class="btn btn-primary" id="btn-reroute" onclick="computeRoute()">
+                                Find Route
+                            </button>
+                        </div>
+                    </div>
+                    <div class="control-card glass-card">
+                        <h3>🛡️ Simulate Failure</h3>
+                        <div class="node-selector">
+                            <div class="select-group">
+                                <label>Edge to Fail</label>
+                                <select id="fail-edge-select"></select>
+                            </div>
+                            <button class="btn btn-danger btn-sm" onclick="simulateFailure()">
+                                Simulate Failure
+                            </button>
+                        </div>
+                    </div>
+                    <div class="control-card glass-card">
+                        <h3>📋 Legend</h3>
+                        <div class="legend-list">
+                            <div class="legend-item"><span class="legend-dot generator"></span> Generator</div>
+                            <div class="legend-item"><span class="legend-dot substation"></span> Substation</div>
+                            <div class="legend-item"><span class="legend-dot consumer"></span> Consumer</div>
+                            <hr style="border-color: rgba(255,255,255,0.05); margin: 4px 0;">
+                            <div class="legend-item"><span class="legend-dot low"></span> Low Congestion</div>
+                            <div class="legend-item"><span class="legend-dot medium"></span> Medium</div>
+                            <div class="legend-item"><span class="legend-dot high"></span> High</div>
+                            <div class="legend-item"><span class="legend-dot critical"></span> Critical</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ML Metrics Section -->
+    <section id="ml-section" class="section">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-tag">Machine Learning</div>
+                <h2 class="section-title">Random Forest Congestion Predictor</h2>
+                <p class="section-desc">
+                    Trained on 5,000 synthetic grid samples to predict transmission line congestion.
+                </p>
+            </div>
+            <div class="metrics-grid">
+                <div class="metric-card glass-card cyan">
+                    <div class="metric-icon">📊</div>
+                    <div class="metric-value" id="ml-r2">—</div>
+                    <div class="metric-label">R² Score</div>
+                </div>
+                <div class="metric-card glass-card green">
+                    <div class="metric-icon">📉</div>
+                    <div class="metric-value" id="ml-rmse">—</div>
+                    <div class="metric-label">RMSE</div>
+                </div>
+                <div class="metric-card glass-card purple">
+                    <div class="metric-icon">📐</div>
+                    <div class="metric-value" id="ml-mae">—</div>
+                    <div class="metric-label">MAE</div>
+                </div>
+                <div class="metric-card glass-card orange">
+                    <div class="metric-icon">🔢</div>
+                    <div class="metric-value" id="ml-samples">—</div>
+                    <div class="metric-label">Training Samples</div>
+                </div>
+            </div>
+
+            <!-- Feature Importance -->
+            <div class="fi-container">
+                <div class="glass-card" style="padding: 28px;">
+                    <h3 style="font-size: 1rem; font-weight: 600; color: var(--accent-cyan); margin-bottom: 20px;">
+                        🔑 Feature Importances
+                    </h3>
+                    <div class="fi-bars" id="fi-bars"></div>
+                </div>
+                <div class="fi-description glass-card">
+                    <h4>What Drives Congestion?</h4>
+                    <p>
+                        The Random Forest model identifies <strong>historical load</strong> as the
+                        dominant predictor of congestion, followed by <strong>infrastructure age</strong>.
+                        Together, these two features account for over 85% of the model's
+                        predictive power.
+                    </p>
+                    <p>
+                        The interaction between high load and old infrastructure creates
+                        a compounding risk — aging lines under heavy demand are the
+                        most likely to fail.
+                    </p>
+                    <div class="fi-insight">
+                        💡 The model uses 9 features to predict congestion scores
+                        between 0.0 (clear) and 1.0 (critical overload).
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Route Comparison -->
+    <section id="routes-section" class="section">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-tag">Pathfinding</div>
+                <h2 class="section-title">A* vs Dijkstra Route Comparison</h2>
+                <p class="section-desc">
+                    ML-informed A* routing balances physical cost with predicted congestion,
+                    while naive Dijkstra only considers resistance.
+                </p>
+            </div>
+            <div class="route-compare-grid">
+                <div class="route-card glass-card astar">
+                    <div class="route-tag">✅ A* (ML-Informed)</div>
+                    <div class="route-path" id="astar-path"></div>
+                    <div class="route-stats">
+                        <div class="route-stat">
+                            <div class="rs-label">Total Cost</div>
+                            <div class="rs-value" id="astar-cost">—</div>
+                        </div>
+                        <div class="route-stat">
+                            <div class="rs-label">Avg Congestion</div>
+                            <div class="rs-value" id="astar-cong">—</div>
+                        </div>
+                        <div class="route-stat">
+                            <div class="rs-label">Hops</div>
+                            <div class="rs-value" id="astar-hops">—</div>
+                        </div>
+                        <div class="route-stat">
+                            <div class="rs-label">Algorithm</div>
+                            <div class="rs-value" style="font-size: 0.85rem;">A* + ML</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="route-card glass-card dijkstra">
+                    <div class="route-tag">📍 Dijkstra (Naive)</div>
+                    <div class="route-path" id="dijkstra-path"></div>
+                    <div class="route-stats">
+                        <div class="route-stat">
+                            <div class="rs-label">Total Cost</div>
+                            <div class="rs-value" id="dijkstra-cost">—</div>
+                        </div>
+                        <div class="route-stat">
+                            <div class="rs-label">Avg Congestion</div>
+                            <div class="rs-value" id="dijkstra-cong">—</div>
+                        </div>
+                        <div class="route-stat">
+                            <div class="rs-label">Hops</div>
+                            <div class="rs-value" id="dijkstra-hops">—</div>
+                        </div>
+                        <div class="route-stat">
+                            <div class="rs-label">Algorithm</div>
+                            <div class="rs-value" style="font-size: 0.85rem;">Dijkstra</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="comparison-banner" id="comparison-banner">
+                <div class="cb-value" id="cb-improvement">—</div>
+                <div class="cb-label">Congestion Reduction with ML-Informed A* Routing</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Self-Healing -->
+    <section id="healing-section" class="section">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-tag">Resilience</div>
+                <h2 class="section-title">Self-Healing Mechanism</h2>
+                <p class="section-desc">
+                    When a transmission line fails, the system automatically detects the failure,
+                    verifies connectivity via DFS, and reroutes through alternate paths.
+                </p>
+            </div>
+            <div class="healing-container">
+                <div class="glass-card" style="padding: 28px;">
+                    <h3 style="font-size: 1rem; color: var(--accent-cyan); margin-bottom: 20px;">
+                        Healing Cycle Steps
+                    </h3>
+                    <div class="healing-steps" id="healing-steps">
+                        <div class="healing-step" data-step="1">
+                            <div class="step-number">1</div>
+                            <div class="step-content">
+                                <h4>🔍 Detect At-Risk Edge</h4>
+                                <p>ML predictor identifies the most congested transmission line based on current conditions.</p>
+                            </div>
+                        </div>
+                        <div class="healing-step" data-step="2">
+                            <div class="step-number">2</div>
+                            <div class="step-content">
+                                <h4>⚡ Simulate Line Failure</h4>
+                                <p id="heal-step2-text">The highest-congestion edge is removed from the graph to simulate a real failure.</p>
+                            </div>
+                        </div>
+                        <div class="healing-step" data-step="3">
+                            <div class="step-number">3</div>
+                            <div class="step-content">
+                                <h4>🔗 DFS Connectivity Check</h4>
+                                <p id="heal-step3-text">Depth-First Search verifies the network remains connected after the failure.</p>
+                            </div>
+                        </div>
+                        <div class="healing-step" data-step="4">
+                            <div class="step-number">4</div>
+                            <div class="step-content">
+                                <h4>🔄 A* Reroute</h4>
+                                <p id="heal-step4-text">The A* algorithm calculates an alternate optimal path avoiding the failed line.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="healing-btn-row" style="margin-top: 20px;">
+                        <button class="btn btn-primary btn-sm" onclick="playHealingDemo()">
+                            ▶ Play Demo
+                        </button>
+                        <button class="btn btn-sm" onclick="resetHealingDemo()" style="background: rgba(255,255,255,0.06); color: var(--text-secondary);">
+                            ↺ Reset
+                        </button>
+                    </div>
+                </div>
+                <div class="healing-visual">
+                    <div class="healing-result-card glass-card" id="healing-result">
+                        <div class="hr-icon">🛡️</div>
+                        <div class="hr-status" id="hr-status">Awaiting Demo</div>
+                        <div class="hr-detail" id="hr-detail">
+                            Click "Play Demo" to watch the self-healing cycle in action.
+                        </div>
+                    </div>
+                    <div class="glass-card" style="padding: 20px;">
+                        <h4 style="font-size: 0.9rem; color: var(--accent-cyan); margin-bottom: 12px;">
+                            📋 Healing Report
+                        </h4>
+                        <div style="font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.8; color: var(--text-secondary);">
+                            <div>Failed Edge: <span id="hr-edge" style="color: var(--accent-red);">—</span></div>
+                            <div>Congestion: <span id="hr-cong" style="color: var(--accent-orange);">—</span></div>
+                            <div>Connected: <span id="hr-connected" style="color: var(--accent-green);">—</span></div>
+                            <div>New Path: <span id="hr-newpath" style="color: var(--accent-green);">—</span></div>
+                            <div>New Cost: <span id="hr-newcost" style="color: var(--accent-cyan);">—</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Congestion Table -->
+    <section id="congestion-section" class="section">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-tag">Analysis</div>
+                <h2 class="section-title">Edge Congestion Map</h2>
+                <p class="section-desc">
+                    All transmission lines ranked by ML-predicted congestion score.
+                    Click an edge to simulate its failure.
+                </p>
+            </div>
+            <div class="glass-card congestion-table-wrapper">
+                <table class="congestion-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Edge</th>
+                            <th>Congestion</th>
+                            <th>Level</th>
+                            <th>Resistance</th>
+                            <th>Length (km)</th>
+                            <th>Age (yrs)</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="congestion-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-sdg">
+                <span class="sdg-badge sdg7">🌿 SDG 7 — Affordable & Clean Energy</span>
+                <span class="sdg-badge sdg9">🏗️ SDG 9 — Industry, Innovation & Infrastructure</span>
+            </div>
+            <p>Predictive Energy Routing — Hybrid ML–A* Optimization</p>
+        </div>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
