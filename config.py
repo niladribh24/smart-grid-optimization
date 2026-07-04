@@ -6,6 +6,14 @@ Contains grid parameters, ML settings, thresholds, and visualization config.
 """
 
 import os
+import sys
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
 
 # ─────────────────────────────────────────────
 # Directory paths
@@ -75,13 +83,12 @@ ML_CONFIG = {
 FEATURE_NAMES = [
     "hour",
     "temperature",
-    "humidity",
-    "wind_speed",
-    "solar_irradiance",
+    "weather",
     "historical_load",
-    "renewable_ratio",
-    "line_age_years",
-    "line_length_km",
+    "renewable_generation",
+    "voltage",
+    "current",
+    "previous_congestion",
 ]
 
 TARGET_NAME = "congestion_score"
@@ -100,6 +107,9 @@ CONGESTION_THRESHOLDS = {
 # A* Routing Configuration
 # ─────────────────────────────────────────────
 ROUTING_CONFIG = {
+    "loss_weight": 0.4,
+    "congestion_weight": 0.4,
+    "resistance_weight": 0.2,
     "alpha": 0.6,           # Weight for ML congestion in cost function (0–1)
     "beta": 0.4,            # Weight for physical resistance (1 - alpha)
     "congestion_penalty": 5.0,   # Multiplier for congestion in heuristic

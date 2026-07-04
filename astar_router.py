@@ -45,27 +45,19 @@ class EnergyRouter:
 
         Combines physical resistance/loss with ML-predicted congestion.
         """
-        # Physical cost: resistance × length
         resistance = data.get("resistance", 0.1)
-        length = data.get("length", 1.0)
-        physical_cost = resistance * length
-
-        # ML congestion cost
         congestion = data.get("congestion_score", 0.0)
-        congestion_cost = congestion * self.congestion_penalty
-
-        # Penalty for near-failure edges
-        if congestion > CONGESTION_THRESHOLDS["critical"]:
-            congestion_cost *= 3.0  # Heavy penalty
-        elif congestion > CONGESTION_THRESHOLDS["high"]:
-            congestion_cost *= 1.5
+        transmission_loss = data.get("transmission_loss", 0.0)
 
         # Skip failed edges entirely
         if data.get("is_failed", False):
             return float("inf")
 
-        # Weighted combination
-        total = self.beta * physical_cost + self.alpha * congestion_cost
+        total = (
+            ROUTING_CONFIG["loss_weight"] * transmission_loss
+            + ROUTING_CONFIG["congestion_weight"] * congestion
+            + ROUTING_CONFIG["resistance_weight"] * resistance
+        )
         return max(total, 0.001)  # Ensure positive cost
 
     def _heuristic(self, node, target, graph: nx.Graph) -> float:
@@ -133,7 +125,7 @@ class EnergyRouter:
                 u, v = path[i], path[i + 1]
                 data = graph[u][v]
 
-                physical = data.get("resistance", 0.1) * data.get("length", 1.0)
+                physical = data.get("transmission_loss", 0.0)
                 cong = data.get("congestion_score", 0.0)
                 edge_cost = self._edge_cost(u, v, data)
 
@@ -145,6 +137,7 @@ class EnergyRouter:
                     "from": u,
                     "to": v,
                     "physical_cost": physical,
+                    "transmission_loss": data.get("transmission_loss", 0.0),
                     "congestion_score": cong,
                     "total_cost": edge_cost,
                     "length_km": data.get("length_km", 0),
@@ -176,7 +169,7 @@ class EnergyRouter:
         working_graph = nx.Graph()
         for u, v, data in graph.edges(data=True):
             if not data.get("is_failed", False):
-                physical_cost = data.get("resistance", 0.1) * data.get("length", 1.0)
+                physical_cost = data.get("transmission_loss", 0.0) + data.get("resistance", 0.1)
                 working_graph.add_edge(u, v, weight=physical_cost, **data)
 
         for node, data in graph.nodes(data=True):
@@ -197,7 +190,7 @@ class EnergyRouter:
                 u, v = path[i], path[i + 1]
                 data = graph[u][v]
 
-                physical = data.get("resistance", 0.1) * data.get("length", 1.0)
+                physical = data.get("transmission_loss", 0.0) + data.get("resistance", 0.1)
                 cong = data.get("congestion_score", 0.0)
 
                 total_cost += physical
@@ -207,6 +200,7 @@ class EnergyRouter:
                     "from": u,
                     "to": v,
                     "physical_cost": physical,
+                    "transmission_loss": data.get("transmission_loss", 0.0),
                     "congestion_score": cong,
                     "total_cost": physical,
                     "length_km": data.get("length_km", 0),

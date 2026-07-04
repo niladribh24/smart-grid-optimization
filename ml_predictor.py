@@ -143,6 +143,23 @@ class CongestionPredictor:
         prediction = self.model.predict(feature_vector)[0]
         return float(np.clip(prediction, 0.0, 1.0))
 
+    @staticmethod
+    def classify_health(congestion_score: float) -> str:
+        """Classify line health from predicted congestion."""
+        if congestion_score >= 0.85:
+            return "Failed"
+        if congestion_score >= 0.70:
+            return "Warning"
+        return "Healthy"
+
+    def predict_line_state(self, features: dict) -> dict:
+        """Predict both congestion score and health classification."""
+        score = self.predict_congestion(features)
+        return {
+            "congestion_score": score,
+            "health_status": self.classify_health(score),
+        }
+
     def predict_batch(self, features_df: pd.DataFrame) -> np.ndarray:
         """
         Predict congestion for multiple transmission lines.

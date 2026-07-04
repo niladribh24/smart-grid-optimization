@@ -146,21 +146,21 @@ class PowerGrid:
         # Generate feature dict for ML predictions
         # Some edges get "stressed" conditions to demonstrate self-healing
         stressed_edges = {
-            ("S2", "S3"): {"hour": 14.0, "temperature": 42.0, "humidity": 85.0,
-                           "wind_speed": 5.0, "solar_irradiance": 200.0,
-                           "historical_load": 480.0, "renewable_ratio": 0.05},
-            ("S5", "C3"): {"hour": 19.0, "temperature": 38.0, "humidity": 75.0,
-                           "wind_speed": 8.0, "solar_irradiance": 50.0,
-                           "historical_load": 460.0, "renewable_ratio": 0.08},
-            ("S3", "C7"): {"hour": 13.0, "temperature": 40.0, "humidity": 80.0,
-                           "wind_speed": 3.0, "solar_irradiance": 150.0,
-                           "historical_load": 450.0, "renewable_ratio": 0.1},
-            ("S6", "C7"): {"hour": 18.0, "temperature": 36.0, "humidity": 70.0,
-                           "wind_speed": 10.0, "solar_irradiance": 100.0,
-                           "historical_load": 420.0, "renewable_ratio": 0.12},
-            ("C6", "C7"): {"hour": 20.0, "temperature": 35.0, "humidity": 72.0,
-                           "wind_speed": 6.0, "solar_irradiance": 0.0,
-                           "historical_load": 440.0, "renewable_ratio": 0.07},
+            ("S2", "S3"): {"hour": 18.0, "temperature": 43.0, "weather": 4.0,
+                           "historical_load": 610.0, "renewable_generation": 20.0,
+                           "voltage": 198.0, "current": 690.0, "previous_congestion": 0.88},
+            ("S5", "C3"): {"hour": 19.0, "temperature": 39.0, "weather": 3.0,
+                           "historical_load": 575.0, "renewable_generation": 35.0,
+                           "voltage": 202.0, "current": 650.0, "previous_congestion": 0.82},
+            ("S3", "C7"): {"hour": 13.0, "temperature": 41.0, "weather": 4.0,
+                           "historical_load": 560.0, "renewable_generation": 45.0,
+                           "voltage": 205.0, "current": 625.0, "previous_congestion": 0.78},
+            ("S6", "C7"): {"hour": 18.0, "temperature": 37.0, "weather": 3.0,
+                           "historical_load": 540.0, "renewable_generation": 30.0,
+                           "voltage": 208.0, "current": 600.0, "previous_congestion": 0.74},
+            ("C6", "C7"): {"hour": 20.0, "temperature": 36.0, "weather": 2.0,
+                           "historical_load": 520.0, "renewable_generation": 25.0,
+                           "voltage": 210.0, "current": 580.0, "previous_congestion": 0.72},
         }
 
         edge_key = (u, v)
@@ -171,31 +171,36 @@ class PowerGrid:
             # Use stressed conditions — old line under heavy load
             features = {
                 **stressed,
-                "line_age_years": max(age, 35.0),  # Force old line
-                "line_length_km": length_km,
             }
             age = max(age, 35.0)
         else:
             hour = float(self.rng.integers(0, 24))
+            historical_load = float(np.clip(self.rng.normal(300, 95), 80, 620))
+            voltage = float(np.clip(232 - 0.035 * historical_load + self.rng.normal(0, 4), 185, 250))
             features = {
                 "hour": hour,
-                "temperature": float(self.rng.normal(25, 8)),
-                "humidity": float(self.rng.normal(60, 15)),
-                "wind_speed": float(self.rng.exponential(15)),
-                "solar_irradiance": float(max(0, self.rng.normal(400, 200))),
-                "historical_load": float(self.rng.normal(250, 80)),
-                "renewable_ratio": float(self.rng.beta(2, 3)),
-                "line_age_years": age,
-                "line_length_km": length_km,
+                "temperature": float(np.clip(self.rng.normal(25, 8), -5, 48)),
+                "weather": float(self.rng.choice([0, 1, 2, 3, 4], p=[0.42, 0.28, 0.16, 0.07, 0.07])),
+                "historical_load": historical_load,
+                "renewable_generation": float(np.clip(self.rng.normal(110, 55), 0, 260)),
+                "voltage": voltage,
+                "current": float(np.clip((historical_load * 1000) / max(voltage, 1) + self.rng.normal(0, 25), 80, 700)),
+                "previous_congestion": float(self.rng.beta(2.2, 4.2)),
             }
+
+        current_load = float(features["historical_load"])
+        transmission_loss = float((current_load / max(capacity, 1.0)) * resistance)
 
         return {
             "length": length,
             "length_km": length_km,
             "resistance": resistance,
             "capacity": capacity,
+            "current_load": current_load,
+            "transmission_loss": transmission_loss,
             "age": age,
             "congestion_score": congestion_score,
+            "health_status": "Healthy",
             "features": features,
             "is_failed": False,
         }
@@ -219,8 +224,20 @@ class PowerGrid:
         congestion_map = {}
         for u, v, data in self.graph.edges(data=True):
             if not data.get("is_failed", False):
-                score = predictor.predict_congestion(data["features"])
+                state = predictor.predict_line_state(data["features"])
+                score = state["congestion_score"]
+                features = data["features"]
+                if (
+                    features.get("previous_congestion", 0.0) >= CONGESTION_THRESHOLDS["critical"]
+                    or (
+                        features.get("current", 0.0) >= 650.0
+                        and features.get("voltage", 230.0) <= 205.0
+                    )
+                ):
+                    score = max(score, 0.9)
                 self.graph[u][v]["congestion_score"] = score
+                self.graph[u][v]["health_status"] = predictor.classify_health(score)
+                self.graph[u][v]["transmission_loss"] = self._calculate_transmission_loss(data)
                 congestion_map[(u, v)] = score
 
         # Print summary
@@ -249,6 +266,7 @@ class PowerGrid:
         """Mark an edge as failed (remove from active graph)."""
         if self.graph.has_edge(u, v):
             self.graph[u][v]["is_failed"] = True
+            self.graph[u][v]["health_status"] = "Failed"
             self.graph[u][v]["original_congestion"] = self.graph[u][v]["congestion_score"]
             self.graph[u][v]["congestion_score"] = 1.0
 
@@ -256,8 +274,38 @@ class PowerGrid:
         """Restore a previously failed edge."""
         if self.graph.has_edge(u, v):
             self.graph[u][v]["is_failed"] = False
+            self.graph[u][v]["health_status"] = "Healthy"
             if "original_congestion" in self.graph[u][v]:
                 self.graph[u][v]["congestion_score"] = self.graph[u][v]["original_congestion"]
+
+    @staticmethod
+    def _calculate_transmission_loss(data: dict) -> float:
+        """Estimate normalized transmission loss from load, capacity, and resistance."""
+        current_load = float(data.get("current_load", data.get("features", {}).get("historical_load", 0.0)))
+        capacity = max(float(data.get("capacity", 1.0)), 1.0)
+        resistance = float(data.get("resistance", 0.0))
+        return float(np.clip((current_load / capacity) * resistance, 0.0, 1.0))
+
+    def randomize_loads(self, hour: int | None = None) -> None:
+        """Generate changing electrical loads for simulation ticks."""
+        if hour is None:
+            hour = int(self.rng.integers(0, 24))
+        for _, _, data in self.graph.edges(data=True):
+            if data.get("is_failed", False):
+                continue
+            features = data["features"]
+            features["hour"] = float(hour)
+            multiplier = 1.0 + 0.25 * np.sin((hour - 6) * np.pi / 12)
+            features["historical_load"] = float(np.clip(features["historical_load"] * multiplier + self.rng.normal(0, 25), 80, 620))
+            features["renewable_generation"] = float(np.clip(features["renewable_generation"] + self.rng.normal(0, 18), 0, 260))
+            features["voltage"] = float(np.clip(232 - 0.035 * features["historical_load"] + 0.03 * features["renewable_generation"] + self.rng.normal(0, 4), 185, 250))
+            features["current"] = float(np.clip((features["historical_load"] * 1000) / max(features["voltage"], 1) + self.rng.normal(0, 25), 80, 700))
+            features["previous_congestion"] = float(max(
+                data.get("congestion_score", 0.0),
+                features.get("previous_congestion", 0.0),
+            ))
+            data["current_load"] = float(features["historical_load"])
+            data["transmission_loss"] = self._calculate_transmission_loss(data)
 
     def get_active_graph(self) -> nx.Graph:
         """Return a subgraph containing only non-failed edges."""
