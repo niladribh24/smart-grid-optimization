@@ -3,417 +3,607 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Predictive Energy Routing using Hybrid ML-A* Optimization — Smart Grid Self-Healing System">
-    <title>PowerGrid — Predictive Energy Routing</title>
-    <link rel="stylesheet" href="/static/styles.css">
+    <meta name="description" content="AI Smart Grid Control Center — Predictive Energy Routing with Self-Healing">
+    <title>AI Smart Grid Control Center</title>
+    <link rel="stylesheet" href="/static/styles_v6.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="/static/app_v4.js" defer></script>
 </head>
 <body>
 
+    <div class="ambient-bg" aria-hidden="true">
+        <div class="gradient-orb orb-1"></div>
+        <div class="gradient-orb orb-2"></div>
+        <div class="gradient-orb orb-3"></div>
+    </div>
+    <div class="wave-bg" aria-hidden="true">
+        <svg class="wave wave-back" viewBox="0 0 1440 320" preserveAspectRatio="none">
+            <path fill="rgba(16,185,129,0.07)" d="M0,192L48,197.3C96,203,192,213,288,218.7C384,224,480,224,576,208C672,192,768,160,864,154.7C960,149,1056,171,1152,181.3C1248,192,1344,192,1392,192L1440,192L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"/>
+        </svg>
+        <svg class="wave wave-mid" viewBox="0 0 1440 320" preserveAspectRatio="none">
+            <path fill="rgba(5,150,105,0.1)" d="M0,256L48,245.3C96,235,192,213,288,202.7C384,192,480,192,576,197.3C672,203,768,213,864,224C960,235,1056,245,1152,240C1248,235,1344,213,1392,202.7L1440,192L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"/>
+        </svg>
+        <svg class="wave wave-front" viewBox="0 0 1440 320" preserveAspectRatio="none">
+            <path fill="rgba(16,185,129,0.14)" d="M0,288L48,272C96,256,192,224,288,213.3C384,203,480,213,576,226.7C672,240,768,256,864,261.3C960,267,1056,261,1152,250.7C1248,240,1344,224,1392,216L1440,208L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"/>
+        </svg>
+    </div>
+    <canvas id="canvas-bg"></canvas>
+
     <!-- Loading Screen -->
     <div id="loading-screen">
-        <div class="loader-ring"></div>
-        <div class="loader-text">Initializing PowerGrid</div>
-        <div class="loader-subtext">Running ML pipeline & building grid...</div>
+        <div class="loader-circuit">
+            <div class="circuit-node"></div>
+            <div class="circuit-line"></div>
+            <div class="circuit-node"></div>
+            <div class="circuit-line"></div>
+            <div class="circuit-node pulse"></div>
+        </div>
+        <div class="loader-text">AI Smart Grid Control Center</div>
+        <div class="loader-step" id="loader-step">Initializing Grid...</div>
+        <div class="loader-bar"><div class="loader-bar-fill" id="loader-bar-fill"></div></div>
     </div>
 
-    <!-- Navigation -->
-    <nav class="navbar">
-        <div class="navbar-inner">
-            <a href="#" class="nav-logo">
-                <span class="logo-icon">⚡</span>
-                <span>PowerGrid</span>
-            </a>
-            <ul class="nav-links">
-                <li><a href="#grid-section">Grid</a></li>
-                <li><a href="#ml-section">ML Model</a></li>
-                <li><a href="#routes-section">Routes</a></li>
-                <li><a href="#healing-section">Self-Healing</a></li>
-                <li><a href="#congestion-section">Congestion</a></li>
-            </ul>
-            <div class="nav-status">
-                <span class="status-dot"></span>
-                <span>System Online</span>
-            </div>
-        </div>
-    </nav>
+    <div id="toast-container" aria-live="polite"></div>
 
-    <!-- Hero Section -->
-    <section class="hero">
-        <div class="container">
-            <div class="hero-badge">
-                <span>🧠</span>
-                <span>ML-Powered Smart Grid</span>
-            </div>
-            <h1>
-                <span class="gradient-text">Predictive Energy Routing</span><br>
-                Hybrid ML–A* Optimization
-            </h1>
-            <p class="subtitle">
-                An intelligent, self-healing power grid system that combines Machine Learning
-                with graph-based A* pathfinding to predict congestion and dynamically
-                reroute energy through optimal transmission paths.
-            </p>
-            <div class="hero-stats">
-                <div class="hero-stat">
-                    <div class="stat-value cyan" id="stat-r2">—</div>
-                    <div class="stat-label">ML R² Score</div>
-                </div>
-                <div class="hero-stat">
-                    <div class="stat-value green" id="stat-nodes">—</div>
-                    <div class="stat-label">Grid Nodes</div>
-                </div>
-                <div class="hero-stat">
-                    <div class="stat-value purple" id="stat-edges">—</div>
-                    <div class="stat-label">Transmission Lines</div>
-                </div>
-                <div class="hero-stat">
-                    <div class="stat-value orange" id="stat-improvement">—</div>
-                    <div class="stat-label">Congestion Reduction</div>
-                </div>
-            </div>
-        </div>
-    </section>
+    <div class="app-shell" id="app-shell" style="opacity:0">
 
-    <!-- Grid Visualization -->
-    <section id="grid-section" class="section">
-        <div class="container">
-            <div class="section-header">
-                <div class="section-tag">Interactive Grid</div>
-                <h2 class="section-title">Power Grid Topology</h2>
-                <p class="section-desc">
-                    Explore the 18-node grid. Edges are color-coded by ML-predicted congestion.
-                    Select source and target nodes to compute custom routes.
-                </p>
+        <!-- Left Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <span class="brand-icon">⚡</span>
+                <span class="brand-text">Grid AI</span>
             </div>
-            <div class="grid-viz-container">
-                <div class="grid-svg-wrapper">
-                    <svg id="grid-svg" viewBox="-20 -10 540 440" xmlns="http://www.w3.org/2000/svg">
-                        <defs>
-                            <filter id="glow-green">
-                                <feGaussianBlur stdDeviation="4" result="blur"/>
-                                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                            </filter>
-                            <filter id="glow-cyan">
-                                <feGaussianBlur stdDeviation="3" result="blur"/>
-                                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                            </filter>
-                            <filter id="glow-red">
-                                <feGaussianBlur stdDeviation="4" result="blur"/>
-                                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                            </filter>
-                            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-                                <polygon points="0 0, 10 3.5, 0 7" fill="#00ff88"/>
-                            </marker>
-                        </defs>
-                        <g id="edges-layer"></g>
-                        <g id="route-layer"></g>
-                        <g id="nodes-layer"></g>
-                        <g id="labels-layer"></g>
-                    </svg>
-                    <div class="edge-tooltip" id="edge-tooltip">
-                        <div class="tt-label" id="tt-label">—</div>
-                        <div class="tt-row"><span class="tt-key">Congestion</span><span class="tt-val" id="tt-cong">—</span></div>
-                        <div class="tt-row"><span class="tt-key">Resistance</span><span class="tt-val" id="tt-res">—</span></div>
-                        <div class="tt-row"><span class="tt-key">Length</span><span class="tt-val" id="tt-len">—</span></div>
-                        <div class="tt-row"><span class="tt-key">Age</span><span class="tt-val" id="tt-age">—</span></div>
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')" title="Dashboard">
+                    <span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span>
+                </button>
+                <button class="nav-item" data-view="simulation" onclick="switchView('simulation')" title="Live Simulation">
+                    <span class="nav-icon">⚡</span><span class="nav-label">Live Simulation</span>
+                </button>
+                <button class="nav-item" data-view="ml" onclick="switchView('ml')" title="AI Predictions">
+                    <span class="nav-icon">🧠</span><span class="nav-label">AI Predictions</span>
+                </button>
+                <button class="nav-item" data-view="analytics" onclick="switchView('analytics')" title="Analytics">
+                    <span class="nav-icon">📈</span><span class="nav-label">Analytics</span>
+                </button>
+                <button class="nav-item" data-view="topology" onclick="switchView('topology')" title="Grid Topology">
+                    <span class="nav-icon">🗺</span><span class="nav-label">Grid Topology</span>
+                </button>
+                <div class="sidebar-divider"></div>
+                <button class="nav-item" onclick="exportLogsToCSV()" title="Export">
+                    <span class="nav-icon">📂</span><span class="nav-label">Export</span>
+                </button>
+                <button class="nav-item" onclick="startOnboarding()" title="Help">
+                    <span class="nav-icon">❓</span><span class="nav-label">Help</span>
+                </button>
+            </nav>
+            <button class="sidebar-collapse-btn" onclick="toggleSidebar()" title="Collapse sidebar">◀</button>
+        </aside>
+
+        <div class="main-area">
+
+            <!-- Top Bar -->
+            <header class="topbar">
+                <div class="topbar-left">
+                    <h1 class="topbar-title">AI Smart Grid <span class="accent">Control Center</span></h1>
+                    <div class="topbar-time font-mono" id="sim-time-display">00:00</div>
+                </div>
+                <div class="topbar-center">
+                    <div class="topbar-stat">
+                        <span class="stat-label">AI Accuracy</span>
+                        <span class="stat-value font-mono accent" id="topbar-accuracy">—</span>
+                    </div>
+                    <div class="topbar-stat">
+                        <span class="stat-label">Sim Speed</span>
+                        <span class="stat-value font-mono" id="topbar-speed">1x</span>
+                    </div>
+                    <div class="mode-toggle">
+                        <button class="mode-btn active" id="btn-beginner" onclick="setUserMode('beginner')">Beginner</button>
+                        <button class="mode-btn" id="btn-expert" onclick="setUserMode('expert')">Expert</button>
                     </div>
                 </div>
-                <div class="grid-controls">
-                    <div class="control-card glass-card">
-                        <h3>🗺️ Route Finder</h3>
-                        <div class="node-selector">
-                            <div class="select-group">
-                                <label>Source Node</label>
-                                <select id="source-select"></select>
-                            </div>
-                            <div class="select-group">
-                                <label>Target Node</label>
-                                <select id="target-select"></select>
-                            </div>
-                            <button class="btn btn-primary" id="btn-reroute" onclick="computeRoute()">
-                                Find Route
+                <div class="topbar-right">
+                    <button class="icon-btn" onclick="startOnboarding()" title="Guided Tour">💡</button>
+                    <button class="icon-btn" id="btn-assistant" onclick="toggleAssistant()" title="AI Assistant">🤖</button>
+                    <button class="icon-btn" onclick="showToast('System notifications active', 'info')" title="Notifications">🔔</button>
+                    <div class="status-pill"><span class="status-dot"></span><span id="system-status-text">Online</span></div>
+                </div>
+            </header>
+
+            <!-- ═══ VIEW: Dashboard (main ops center) ═══ -->
+            <div id="view-dashboard" class="view active">
+                <div class="ops-layout">
+                    <div class="graph-column">
+                        <!-- Interactive Legend -->
+                        <div class="interactive-legend" id="interactive-legend">
+                            <button class="legend-item" data-filter="generator" onclick="setLegendFilter('generator')">
+                                <span class="legend-dot gen"></span><span class="legend-text">Power Plants</span>
                             </button>
-                        </div>
-                    </div>
-                    <div class="control-card glass-card">
-                        <h3>🛡️ Simulate Failure</h3>
-                        <div class="node-selector">
-                            <div class="select-group">
-                                <label>Edge to Fail</label>
-                                <select id="fail-edge-select"></select>
-                            </div>
-                            <button class="btn btn-danger btn-sm" onclick="simulateFailure()">
-                                Simulate Failure
+                            <button class="legend-item" data-filter="substation" onclick="setLegendFilter('substation')">
+                                <span class="legend-dot sub"></span><span class="legend-text">Substations</span>
                             </button>
+                            <button class="legend-item" data-filter="consumer" onclick="setLegendFilter('consumer')">
+                                <span class="legend-dot con"></span><span class="legend-text">Consumers</span>
+                            </button>
+                            <button class="legend-item" data-filter="healthy" onclick="setLegendFilter('healthy')">
+                                <span class="legend-dot healthy"></span><span class="legend-text">Healthy Lines</span>
+                            </button>
+                            <button class="legend-item" data-filter="congested" onclick="setLegendFilter('congested')">
+                                <span class="legend-dot congested"></span><span class="legend-text">Congested</span>
+                            </button>
+                            <button class="legend-item" data-filter="failed" onclick="setLegendFilter('failed')">
+                                <span class="legend-dot failed"></span><span class="legend-text">Failed</span>
+                            </button>
+                            <button class="legend-item" data-filter="route" onclick="setLegendFilter('route')">
+                                <span class="legend-dot route"></span><span class="legend-text">Active Route</span>
+                            </button>
+                            <button class="legend-item legend-clear" onclick="setLegendFilter(null)">Show All</button>
                         </div>
-                    </div>
-                    <div class="control-card glass-card">
-                        <h3>📋 Legend</h3>
-                        <div class="legend-list">
-                            <div class="legend-item"><span class="legend-dot generator"></span> Generator</div>
-                            <div class="legend-item"><span class="legend-dot substation"></span> Substation</div>
-                            <div class="legend-item"><span class="legend-dot consumer"></span> Consumer</div>
-                            <hr style="border-color: rgba(255,255,255,0.05); margin: 4px 0;">
-                            <div class="legend-item"><span class="legend-dot low"></span> Low Congestion</div>
-                            <div class="legend-item"><span class="legend-dot medium"></span> Medium</div>
-                            <div class="legend-item"><span class="legend-dot high"></span> High</div>
-                            <div class="legend-item"><span class="legend-dot critical"></span> Critical</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
 
-    <!-- ML Metrics Section -->
-    <section id="ml-section" class="section">
-        <div class="container">
-            <div class="section-header">
-                <div class="section-tag">Machine Learning</div>
-                <h2 class="section-title">Random Forest Congestion Predictor</h2>
-                <p class="section-desc">
-                    Trained on 5,000 synthetic grid samples to predict transmission line congestion.
-                </p>
-            </div>
-            <div class="metrics-grid">
-                <div class="metric-card glass-card cyan">
-                    <div class="metric-icon">📊</div>
-                    <div class="metric-value" id="ml-r2">—</div>
-                    <div class="metric-label">R² Score</div>
-                </div>
-                <div class="metric-card glass-card green">
-                    <div class="metric-icon">📉</div>
-                    <div class="metric-value" id="ml-rmse">—</div>
-                    <div class="metric-label">RMSE</div>
-                </div>
-                <div class="metric-card glass-card purple">
-                    <div class="metric-icon">📐</div>
-                    <div class="metric-value" id="ml-mae">—</div>
-                    <div class="metric-label">MAE</div>
-                </div>
-                <div class="metric-card glass-card orange">
-                    <div class="metric-icon">🔢</div>
-                    <div class="metric-value" id="ml-samples">—</div>
-                    <div class="metric-label">Training Samples</div>
-                </div>
-            </div>
-
-            <!-- Feature Importance -->
-            <div class="fi-container">
-                <div class="glass-card" style="padding: 28px;">
-                    <h3 style="font-size: 1rem; font-weight: 600; color: var(--accent-cyan); margin-bottom: 20px;">
-                        🔑 Feature Importances
-                    </h3>
-                    <div class="fi-bars" id="fi-bars"></div>
-                </div>
-                <div class="fi-description glass-card">
-                    <h4>What Drives Congestion?</h4>
-                    <p>
-                        The Random Forest model identifies <strong>historical load</strong> as the
-                        dominant predictor of congestion, followed by <strong>infrastructure age</strong>.
-                        Together, these two features account for over 85% of the model's
-                        predictive power.
-                    </p>
-                    <p>
-                        The interaction between high load and old infrastructure creates
-                        a compounding risk — aging lines under heavy demand are the
-                        most likely to fail.
-                    </p>
-                    <div class="fi-insight">
-                        💡 The model uses 9 features to predict congestion scores
-                        between 0.0 (clear) and 1.0 (critical overload).
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Route Comparison -->
-    <section id="routes-section" class="section">
-        <div class="container">
-            <div class="section-header">
-                <div class="section-tag">Pathfinding</div>
-                <h2 class="section-title">A* vs Dijkstra Route Comparison</h2>
-                <p class="section-desc">
-                    ML-informed A* routing balances physical cost with predicted congestion,
-                    while naive Dijkstra only considers resistance.
-                </p>
-            </div>
-            <div class="route-compare-grid">
-                <div class="route-card glass-card astar">
-                    <div class="route-tag">✅ A* (ML-Informed)</div>
-                    <div class="route-path" id="astar-path"></div>
-                    <div class="route-stats">
-                        <div class="route-stat">
-                            <div class="rs-label">Total Cost</div>
-                            <div class="rs-value" id="astar-cost">—</div>
-                        </div>
-                        <div class="route-stat">
-                            <div class="rs-label">Avg Congestion</div>
-                            <div class="rs-value" id="astar-cong">—</div>
-                        </div>
-                        <div class="route-stat">
-                            <div class="rs-label">Hops</div>
-                            <div class="rs-value" id="astar-hops">—</div>
-                        </div>
-                        <div class="route-stat">
-                            <div class="rs-label">Algorithm</div>
-                            <div class="rs-value" style="font-size: 0.85rem;">A* + ML</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="route-card glass-card dijkstra">
-                    <div class="route-tag">📍 Dijkstra (Naive)</div>
-                    <div class="route-path" id="dijkstra-path"></div>
-                    <div class="route-stats">
-                        <div class="route-stat">
-                            <div class="rs-label">Total Cost</div>
-                            <div class="rs-value" id="dijkstra-cost">—</div>
-                        </div>
-                        <div class="route-stat">
-                            <div class="rs-label">Avg Congestion</div>
-                            <div class="rs-value" id="dijkstra-cong">—</div>
-                        </div>
-                        <div class="route-stat">
-                            <div class="rs-label">Hops</div>
-                            <div class="rs-value" id="dijkstra-hops">—</div>
-                        </div>
-                        <div class="route-stat">
-                            <div class="rs-label">Algorithm</div>
-                            <div class="rs-value" style="font-size: 0.85rem;">Dijkstra</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="comparison-banner" id="comparison-banner">
-                <div class="cb-value" id="cb-improvement">—</div>
-                <div class="cb-label">Congestion Reduction with ML-Informed A* Routing</div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Self-Healing -->
-    <section id="healing-section" class="section">
-        <div class="container">
-            <div class="section-header">
-                <div class="section-tag">Resilience</div>
-                <h2 class="section-title">Self-Healing Mechanism</h2>
-                <p class="section-desc">
-                    When a transmission line fails, the system automatically detects the failure,
-                    verifies connectivity via DFS, and reroutes through alternate paths.
-                </p>
-            </div>
-            <div class="healing-container">
-                <div class="glass-card" style="padding: 28px;">
-                    <h3 style="font-size: 1rem; color: var(--accent-cyan); margin-bottom: 20px;">
-                        Healing Cycle Steps
-                    </h3>
-                    <div class="healing-steps" id="healing-steps">
-                        <div class="healing-step" data-step="1">
-                            <div class="step-number">1</div>
-                            <div class="step-content">
-                                <h4>🔍 Detect At-Risk Edge</h4>
-                                <p>ML predictor identifies the most congested transmission line based on current conditions.</p>
+                        <div class="graph-panel glass-card" id="graph-panel">
+                            <div class="graph-controls">
+                                <button class="gctrl-btn" onclick="zoomGraph(1.2)" title="Zoom In">+</button>
+                                <button class="gctrl-btn" onclick="zoomGraph(0.8)" title="Zoom Out">−</button>
+                                <button class="gctrl-btn" onclick="resetGraphView()" title="Reset View">⟲</button>
+                                <button class="gctrl-btn" onclick="centerGraph()" title="Center">◎</button>
+                                <button class="gctrl-btn" onclick="toggleLabels()" title="Toggle Labels" id="btn-labels">Aa</button>
                             </div>
-                        </div>
-                        <div class="healing-step" data-step="2">
-                            <div class="step-number">2</div>
-                            <div class="step-content">
-                                <h4>⚡ Simulate Line Failure</h4>
-                                <p id="heal-step2-text">The highest-congestion edge is removed from the graph to simulate a real failure.</p>
+
+                            <div class="map-hint font-mono" id="map-hint">Click nodes to route · Double-click lines to fail/repair</div>
+
+                            <div class="svg-viewport" id="svg-viewport">
+                                <svg id="grid-svg" viewBox="-15 -10 530 430" xmlns="http://www.w3.org/2000/svg">
+                                    <defs>
+                                        <pattern id="grid-pattern" width="25" height="25" patternUnits="userSpaceOnUse">
+                                            <path d="M 25 0 L 0 0 0 25" fill="none" stroke="rgba(59,130,246,0.10)" stroke-width="0.75"/>
+                                        </pattern>
+                                        <filter id="glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
+                                            <feGaussianBlur stdDeviation="3" result="blur"/>
+                                            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                                        </filter>
+                                        <filter id="glow-green" x="-20%" y="-20%" width="140%" height="140%">
+                                            <feGaussianBlur stdDeviation="3" result="blur"/>
+                                            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                                        </filter>
+                                        <filter id="glow-red" x="-20%" y="-20%" width="140%" height="140%">
+                                            <feGaussianBlur stdDeviation="4" result="blur"/>
+                                            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                                        </filter>
+                                        <filter id="glow-blue" x="-20%" y="-20%" width="140%" height="140%">
+                                            <feGaussianBlur stdDeviation="4" result="blur"/>
+                                            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                                        </filter>
+                                    </defs>
+                                    <rect width="100%" height="100%" fill="url(#grid-pattern)"/>
+                                    <g id="edges-layer"></g>
+                                    <g id="route-layer"></g>
+                                    <g id="nodes-layer"></g>
+                                    <g id="labels-layer"></g>
+                                </svg>
                             </div>
-                        </div>
-                        <div class="healing-step" data-step="3">
-                            <div class="step-number">3</div>
-                            <div class="step-content">
-                                <h4>🔗 DFS Connectivity Check</h4>
-                                <p id="heal-step3-text">Depth-First Search verifies the network remains connected after the failure.</p>
+
+                            <!-- Minimap -->
+                            <div class="minimap" id="minimap">
+                                <svg id="minimap-svg" viewBox="-15 -10 530 430"></svg>
+                                <div class="minimap-viewport" id="minimap-viewport"></div>
                             </div>
-                        </div>
-                        <div class="healing-step" data-step="4">
-                            <div class="step-number">4</div>
-                            <div class="step-content">
-                                <h4>🔄 A* Reroute</h4>
-                                <p id="heal-step4-text">The A* algorithm calculates an alternate optimal path avoiding the failed line.</p>
+
+                            <div class="edge-tooltip" id="edge-tooltip">
+                                <div class="tt-label" id="tt-label">—</div>
+                                <div class="tt-row"><span class="tt-key" id="tt-cong-label">Traffic Level</span><span class="tt-val font-mono" id="tt-cong">—</span></div>
+                                <div class="tt-row expert-only"><span class="tt-key">Resistance</span><span class="tt-val font-mono" id="tt-res">—</span></div>
+                                <div class="tt-row"><span class="tt-key">Distance</span><span class="tt-val font-mono" id="tt-len">—</span></div>
+                                <div class="tt-row expert-only"><span class="tt-key">Line Age</span><span class="tt-val font-mono" id="tt-age">—</span></div>
+                                <div class="tt-row"><span class="tt-key">Status</span><span class="tt-val" id="tt-status">—</span></div>
+                            </div>
+
+                            <div class="node-tooltip" id="node-tooltip">
+                                <div class="tt-label" id="nt-label">—</div>
+                                <div class="tt-row"><span class="tt-key">Type</span><span class="tt-val" id="nt-type">—</span></div>
+                                <div class="tt-row expert-only"><span class="tt-key">Voltage</span><span class="tt-val font-mono" id="nt-voltage">—</span></div>
+                                <div class="tt-row"><span class="tt-key">Status</span><span class="tt-val" id="nt-status">Healthy</span></div>
                             </div>
                         </div>
                     </div>
-                    <div class="healing-btn-row" style="margin-top: 20px;">
-                        <button class="btn btn-primary btn-sm" onclick="playHealingDemo()">
-                            ▶ Play Demo
-                        </button>
-                        <button class="btn btn-sm" onclick="resetHealingDemo()" style="background: rgba(255,255,255,0.06); color: var(--text-secondary);">
-                            ↺ Reset
-                        </button>
-                    </div>
+
+                    <!-- Right Panel -->
+                    <aside class="right-panel">
+                        <!-- AI Status Card -->
+                        <div class="dash-card glass-card ai-card">
+                            <div class="card-header">
+                                <h3>🧠 AI Status</h3>
+                                <div class="ai-pulse" aria-hidden="true"></div>
+                            </div>
+                            <div class="ai-stats">
+                                <div class="ai-stat"><span class="ai-stat-lbl">Model</span><span class="ai-stat-val">Random Forest</span></div>
+                                <div class="ai-stat"><span class="ai-stat-lbl">Accuracy</span><span class="ai-stat-val font-mono accent" id="card-accuracy">—</span></div>
+                                <div class="ai-stat"><span class="ai-stat-lbl">Inference</span><span class="ai-stat-val font-mono" id="card-inference">~14 ms</span></div>
+                                <div class="ai-stat"><span class="ai-stat-lbl">Updated</span><span class="ai-stat-val" id="card-updated">just now</span></div>
+                            </div>
+                            <canvas id="prediction-chart" height="60"></canvas>
+                        </div>
+
+                        <!-- Current Route Card -->
+                        <div class="dash-card glass-card">
+                            <h3>🔵 Current Route</h3>
+                            <div class="route-flow" id="route-flow-display">
+                                <div class="route-endpoint"><span class="re-label">Source</span><span class="re-val" id="route-source-label">G1</span></div>
+                                <div class="route-arrow-anim">↓</div>
+                                <div class="route-endpoint"><span class="re-label">Destination</span><span class="re-val" id="route-target-label">C6</span></div>
+                                <div class="route-arrow-anim">↓</div>
+                                <div class="route-path-display" id="route-path-display">—</div>
+                            </div>
+                            <div class="route-explain" id="route-explain"></div>
+                            <div class="selector-bar compact">
+                                <select id="source-select" onchange="updateRouteEndpoint()"></select>
+                                <select id="target-select" onchange="updateRouteEndpoint()"></select>
+                                <button class="btn btn-primary btn-sm" id="btn-reroute" onclick="computeRoute()">Find Route</button>
+                            </div>
+                        </div>
+
+                        <!-- Live Statistics -->
+                        <div class="dash-card glass-card">
+                            <h3>📊 Live Statistics</h3>
+                            <div class="live-stats-grid">
+                                <div class="live-stat"><span class="ls-val font-mono orange" id="stat-congested">0</span><span class="ls-lbl">Congested Lines</span></div>
+                                <div class="live-stat"><span class="ls-val font-mono red" id="val-failed-count">0</span><span class="ls-lbl">Failed Lines</span></div>
+                                <div class="live-stat"><span class="ls-val font-mono blue" id="stat-reroutes">0</span><span class="ls-lbl">Reroutes</span></div>
+                                <div class="live-stat"><span class="ls-val font-mono yellow" id="stat-avg-loss">—</span><span class="ls-lbl">Avg Loss</span></div>
+                                <div class="live-stat wide"><span class="ls-val font-mono" id="stat-avg-cong">—</span><span class="ls-lbl">Average Congestion</span></div>
+                                <div class="live-stat wide expert-only"><span class="ls-val font-mono cyan" id="val-cost">—</span><span class="ls-lbl">Route Cost (A*)</span></div>
+                                <div class="live-stat wide expert-only"><span class="ls-val font-mono green" id="val-improvement">—</span><span class="ls-lbl">Congestion Relief vs Naive</span></div>
+                                <div class="live-stat wide expert-only"><span class="ls-val font-mono purple" id="val-hops">—</span><span class="ls-lbl">Active Hops</span></div>
+                            </div>
+                        </div>
+
+                        <!-- Health Gauges -->
+                        <div class="dash-card glass-card">
+                            <h3>💚 Grid Health</h3>
+                            <div class="gauge-grid">
+                                <div class="gauge-item" data-gauge="transmission"><svg viewBox="0 0 80 80"><circle class="gauge-bg" cx="40" cy="40" r="32"/><circle class="gauge-fill" cx="40" cy="40" r="32" id="gauge-transmission"/></svg><span class="gauge-lbl">Transmission</span><span class="gauge-val font-mono" id="gauge-transmission-val">—</span></div>
+                                <div class="gauge-item" data-gauge="stability"><svg viewBox="0 0 80 80"><circle class="gauge-bg" cx="40" cy="40" r="32"/><circle class="gauge-fill" cx="40" cy="40" r="32" id="gauge-stability"/></svg><span class="gauge-lbl">Stability</span><span class="gauge-val font-mono" id="gauge-stability-val">—</span></div>
+                                <div class="gauge-item" data-gauge="ai"><svg viewBox="0 0 80 80"><circle class="gauge-bg" cx="40" cy="40" r="32"/><circle class="gauge-fill purple" cx="40" cy="40" r="32" id="gauge-ai"/></svg><span class="gauge-lbl">AI Confidence</span><span class="gauge-val font-mono" id="gauge-ai-val">—</span></div>
+                                <div class="gauge-item" data-gauge="efficiency"><svg viewBox="0 0 80 80"><circle class="gauge-bg" cx="40" cy="40" r="32"/><circle class="gauge-fill yellow" cx="40" cy="40" r="32" id="gauge-efficiency"/></svg><span class="gauge-lbl">Efficiency</span><span class="gauge-val font-mono" id="gauge-efficiency-val">—</span></div>
+                            </div>
+                        </div>
+
+                        <!-- Weather Panel -->
+                        <div class="dash-card glass-card weather-card">
+                            <h3>🌤 Weather Conditions</h3>
+                            <div class="weather-display" id="weather-display">
+                                <span class="weather-icon" id="weather-icon">☀️</span>
+                                <span class="weather-name" id="weather-name">Normal Day</span>
+                            </div>
+                        </div>
+                    </aside>
                 </div>
-                <div class="healing-visual">
-                    <div class="healing-result-card glass-card" id="healing-result">
-                        <div class="hr-icon">🛡️</div>
-                        <div class="hr-status" id="hr-status">Awaiting Demo</div>
-                        <div class="hr-detail" id="hr-detail">
-                            Click "Play Demo" to watch the self-healing cycle in action.
+
+                <!-- Bottom Dock -->
+                <footer class="bottom-dock">
+                    <div class="dock-section timeline-section">
+                        <h4 class="dock-title">Event Timeline</h4>
+                        <div class="event-timeline" id="event-timeline"></div>
+                    </div>
+                    <div class="dock-section controls-section">
+                        <h4 class="dock-title">Simulation Controls</h4>
+                        <div class="sim-controls">
+                            <button class="btn btn-primary" id="btn-play" onclick="togglePlaySimulation()">▶ Start</button>
+                            <button class="btn btn-secondary" id="btn-step" onclick="stepSimulation()">⏭ Step</button>
+                            <button class="btn btn-dark" onclick="resetSimulation()">🔄 Reset</button>
+                            <button class="btn btn-danger btn-sm" onclick="simulateFailure()">⚡ Inject Failure</button>
+                        </div>
+                        <div class="scenario-row">
+                            <span class="scenario-label">Scenarios:</span>
+                            <button class="btn btn-sm scenario-btn active" data-scenario="normal" onclick="injectScenario('normal')">☀ Normal</button>
+                            <button class="btn btn-sm scenario-btn" data-scenario="peak" onclick="injectScenario('peak')">🌆 Peak</button>
+                            <button class="btn btn-sm scenario-btn" data-scenario="heatwave" onclick="injectScenario('heatwave')">🌡 Heatwave</button>
+                            <button class="btn btn-sm scenario-btn" data-scenario="storm" onclick="injectScenario('storm')">⛈ Storm</button>
+                            <button class="btn btn-sm scenario-btn" data-scenario="live" onclick="injectScenario('live')" style="background: linear-gradient(135deg, #10b981 0%, #3b82f6 100%); border: none;">🌍 Live</button>
+                            <input type="text" id="city-search" class="btn btn-sm" placeholder="City (e.g. London)" style="width: 100px; padding: 2px 6px; background: rgba(9, 27, 42, 0.8); border: 1px solid var(--border-dim); color: var(--text-primary);" onchange="updateLiveCity(this.value)">
+                        </div>
+                        <div class="speed-row">
+                            <span class="font-mono speed-label">Speed: <span id="speed-display">2.5s</span></span>
+                            <input type="range" id="speed-slider" min="500" max="5000" step="250" value="2500" oninput="adjustSpeed(this.value)">
+                            <div class="speed-marks"><span>8x</span><span>4x</span><span>2x</span><span>1x</span></div>
+                        </div>
+                        <div class="fail-row">
+                            <select id="fail-edge-select" class="fail-select"></select>
+                            <button class="btn btn-outline-green btn-sm" onclick="restoreSelectedEdge()">Repair Line</button>
                         </div>
                     </div>
-                    <div class="glass-card" style="padding: 20px;">
-                        <h4 style="font-size: 0.9rem; color: var(--accent-cyan); margin-bottom: 12px;">
-                            📋 Healing Report
-                        </h4>
-                        <div style="font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.8; color: var(--text-secondary);">
-                            <div>Failed Edge: <span id="hr-edge" style="color: var(--accent-red);">—</span></div>
-                            <div>Congestion: <span id="hr-cong" style="color: var(--accent-orange);">—</span></div>
-                            <div>Connected: <span id="hr-connected" style="color: var(--accent-green);">—</span></div>
-                            <div>New Path: <span id="hr-newpath" style="color: var(--accent-green);">—</span></div>
-                            <div>New Cost: <span id="hr-newcost" style="color: var(--accent-cyan);">—</span></div>
+                    <div class="dock-section log-section">
+                        <div class="log-header">
+                            <h4 class="dock-title">Event Log</h4>
+                            <button class="btn btn-dark btn-sm" onclick="exportLogsToCSV()">Export</button>
+                        </div>
+                        <div class="console-terminal font-mono" id="console-logs-feed">
+                            <div class="log-entry system">[SYSTEM] Control center initialized...</div>
+                        </div>
+                    </div>
+                </footer>
+            </div>
+
+            <!-- ═══ VIEW: Live Simulation (detailed) ═══ -->
+            <div id="view-simulation" class="view">
+                <div id="tab-content-simulation" class="simulation-page">
+                    <div class="tab-hero glass-card">
+                        <div>
+                            <div class="section-badge font-mono">LIVE SIMULATION</div>
+                            <h2>Grid Operations Playback</h2>
+                            <p id="sim-detail-status">Paused - select a scenario and press Start on the bottom dock.</p>
+                        </div>
+                        <div class="tab-hero-metrics">
+                            <div class="hero-metric"><span class="hm-label">Scenario</span><span class="hm-value" id="sim-weather-name">Sunny - Normal Day</span></div>
+                            <div class="hero-metric"><span class="hm-label">Speed</span><span class="hm-value font-mono" id="topbar-speed-mirror">1x</span></div>
+                            <div class="hero-metric"><span class="hm-label">Live Feed</span><span class="hm-value status-good">Online</span></div>
+                        </div>
+                    </div>
+                    <div class="simulation-grid">
+                        <div class="glass-card sim-stage-card">
+                            <div class="card-header">
+                                <h3>Scenario Control</h3>
+                                <span class="chip-live"><span></span> Ready</span>
+                            </div>
+                            <div class="scenario-panel">
+                                <button class="scenario-btn active" data-scenario="normal" onclick="injectScenario('normal')">Normal</button>
+                                <button class="scenario-btn" data-scenario="peak" onclick="injectScenario('peak')">Peak Load</button>
+                                <button class="scenario-btn" data-scenario="heatwave" onclick="injectScenario('heatwave')">Heatwave</button>
+                                <button class="scenario-btn" data-scenario="storm" onclick="injectScenario('storm')">Storm</button>
+                                <button class="scenario-btn" data-scenario="live" onclick="injectScenario('live')" style="background: linear-gradient(135deg, #10b981 0%, #3b82f6 100%); border: none; color: white;">🌍 Live Weather</button>
+                            </div>
+                            <div class="speed-row simulation-speed">
+                                <span class="font-mono speed-label">Speed: <span id="speed-display-panel">2.5s</span></span>
+                                <input type="range" min="500" max="5000" step="250" value="2500" oninput="adjustSpeed(this.value)">
+                            </div>
+                        </div>
+                        <div class="glass-card sim-stage-card">
+                            <div class="card-header">
+                                <h3>Fault Testing</h3>
+                                <span class="chip-warn">Manual</span>
+                            </div>
+                            <div class="fault-actions">
+                                <button class="btn btn-primary" onclick="stepSimulation()">Step Tick</button>
+                                <button class="btn btn-danger" onclick="simulateFailure()">Inject Failure</button>
+                                <button class="btn btn-secondary" onclick="resetSimulation()">Reset</button>
+                            </div>
+                            <div class="fail-row">
+                                <select id="fail-edge-select-panel" class="fail-select" onchange="document.getElementById('fail-edge-select').value=this.value"></select>
+                                <button class="btn btn-outline-green btn-sm" onclick="restoreSelectedEdge()">Repair Line</button>
+                            </div>
+                        </div>
+                        <div class="glass-card sim-stage-card wide">
+                            <div class="card-header">
+                                <h3>Simulation Timeline</h3>
+                                <button class="btn btn-dark btn-sm" onclick="exportLogsToCSV()">Export</button>
+                            </div>
+                            <div class="event-timeline simulation-timeline" id="event-timeline-panel"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══ VIEW: AI Predictions ═══ -->
+            <div id="view-ml" class="view">
+                <div id="tab-content-ml" class="analytics-layout">
+                    <div class="analytics-left">
+                        <div class="section-badge font-mono">🧠 MODEL PERFORMANCE</div>
+                        <div class="metrics-grid">
+                            <div class="metric-card glass-card cyan">
+                                <div class="metric-icon">📊</div>
+                                <div class="metric-value font-mono" id="ml-r2">—</div>
+                                <div class="metric-label">R² Score <span class="info-bubble" data-tooltip="How well the model predicts congestion (1.0 = perfect).">ⓘ</span></div>
+                            </div>
+                            <div class="metric-card glass-card green">
+                                <div class="metric-icon">📉</div>
+                                <div class="metric-value font-mono" id="ml-rmse">—</div>
+                                <div class="metric-label">RMSE <span class="info-bubble" data-tooltip="Average prediction error magnitude. Lower is better.">ⓘ</span></div>
+                            </div>
+                            <div class="metric-card glass-card purple">
+                                <div class="metric-icon">📐</div>
+                                <div class="metric-value font-mono" id="ml-mae">—</div>
+                                <div class="metric-label">MAE <span class="info-bubble" data-tooltip="Mean absolute error of congestion forecasts.">ⓘ</span></div>
+                            </div>
+                            <div class="metric-card glass-card orange">
+                                <div class="metric-icon">🔢</div>
+                                <div class="metric-value font-mono" id="ml-samples">—</div>
+                                <div class="metric-label">Training Samples</div>
+                            </div>
+                        </div>
+                        <div class="glass-card fi-card">
+                            <h3 class="card-heading">🔑 Feature Importance</h3>
+                            <div class="fi-bars" id="fi-bars"></div>
+                        </div>
+                    </div>
+                    <div class="analytics-right glass-card">
+                        <h3 class="card-heading text-cyan">💡 How AI Predictions Work</h3>
+                        <div class="explainer-section">
+                            <h4>Plain Language Summary</h4>
+                            <p>The AI watches each power line's load, weather, and history to guess how busy it will get. When a line looks overloaded, the system reroutes power <em>before</em> a blackout happens.</p>
+                        </div>
+                        <div class="explainer-section expert-only">
+                            <h4>Technical Details</h4>
+                            <p>Random Forest Regressor trained on 5,000 synthetic samples. Features: historical load, weather, voltage, current, hour, renewable generation, previous congestion.</p>
+                        </div>
+                        <div class="fi-insight">🛡️ <strong>Self-Healing:</strong> Lines above <strong>85%</strong> congestion are automatically isolated and power is rerouted via A*.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══ VIEW: Analytics ═══ -->
+            <div id="view-analytics" class="view">
+                <div class="analytics-page">
+                    <div class="section-badge font-mono">📈 GRID ANALYTICS</div>
+                    <div class="analytics-charts-grid">
+                        <div class="glass-card chart-card">
+                            <h3>Congestion Heatmap</h3>
+                            <div class="heatmap-grid" id="congestion-heatmap"></div>
+                        </div>
+                        <div class="glass-card chart-card">
+                            <h3>Health Status Distribution</h3>
+                            <div class="pie-chart" id="health-pie"></div>
+                        </div>
+                        <div class="glass-card chart-card">
+                            <h3>Load Trend (24h)</h3>
+                            <canvas id="load-trend-chart" height="120"></canvas>
+                        </div>
+                        <div class="glass-card chart-card">
+                            <h3>Hourly Congestion</h3>
+                            <canvas id="hourly-cong-chart" height="120"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══ VIEW: Grid Topology / Routing ═══ -->
+            <div id="view-topology" class="view">
+                <div id="tab-content-routes">
+                    <div class="routing-layout-top">
+                        <div class="section-badge font-mono">📊 ROUTING COMPARISON</div>
+                        <div class="comparison-banner glass-card" id="comparison-banner">
+                            <div class="cb-value font-mono text-green" id="cb-improvement">—</div>
+                            <div class="cb-label">Congestion reduction: A* ML vs baseline Dijkstra</div>
+                        </div>
+                    </div>
+                    <div class="route-compare-grid">
+                        <div class="route-card glass-card astar">
+                            <div class="route-tag">🔵 A* (ML-Informed)</div>
+                            <div class="route-path-container"><div class="route-path" id="astar-path"></div></div>
+                            <div class="route-stats">
+                                <div class="route-stat"><div class="rs-label">Cost</div><div class="rs-value font-mono" id="astar-cost">—</div></div>
+                                <div class="route-stat"><div class="rs-label">Congestion</div><div class="rs-value font-mono" id="astar-cong">—</div></div>
+                                <div class="route-stat"><div class="rs-label">Hops</div><div class="rs-value font-mono" id="astar-hops">—</div></div>
+                            </div>
+                        </div>
+                        <div class="route-card glass-card dijkstra">
+                            <div class="route-tag">📍 Dijkstra (Baseline)</div>
+                            <div class="route-path-container"><div class="route-path" id="dijkstra-path"></div></div>
+                            <div class="route-stats">
+                                <div class="route-stat"><div class="rs-label">Cost</div><div class="rs-value font-mono" id="dijkstra-cost">—</div></div>
+                                <div class="route-stat"><div class="rs-label">Congestion</div><div class="rs-value font-mono" id="dijkstra-cong">—</div></div>
+                                <div class="route-stat"><div class="rs-label">Hops</div><div class="rs-value font-mono" id="dijkstra-hops">—</div></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="self-healing-section-wrapper glass-card">
+                        <h3 class="card-heading">🛡️ Self-Healing Mechanism</h3>
+                        <div class="healing-container">
+                            <div class="healing-steps-box">
+                                <div class="healing-steps" id="healing-steps">
+                                    <div class="healing-step" data-step="1"><div class="step-number">1</div><div class="step-content"><h4>🔍 Risk Scan</h4><p>ML monitors all transmission lines for overload risk.</p></div></div>
+                                    <div class="healing-step" data-step="2"><div class="step-number">2</div><div class="step-content"><h4>⚡ Fault Isolation</h4><p id="heal-step2-text">Lines above 85% congestion are tripped.</p></div></div>
+                                    <div class="healing-step" data-step="3"><div class="step-number">3</div><div class="step-content"><h4>🔗 Connectivity Check</h4><p id="heal-step3-text">DFS verifies the grid remains connected.</p></div></div>
+                                    <div class="healing-step" data-step="4"><div class="step-number">4</div><div class="step-content"><h4>🔄 A* Reroute</h4><p id="heal-step4-text">Optimal backup path calculated.</p></div></div>
+                                </div>
+                                <div class="healing-btn-row">
+                                    <button class="btn btn-primary btn-sm" onclick="playHealingDemo()">▶ Play Demo</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="resetHealingDemo()">↺ Reset</button>
+                                </div>
+                            </div>
+                            <div class="healing-report-box">
+                                <div class="healing-result-card" id="healing-result">
+                                    <div class="hr-icon">🛡️</div>
+                                    <div class="hr-status" id="hr-status">Awaiting Demo</div>
+                                    <div class="hr-detail" id="hr-detail">Click Play Demo to run a self-healing cycle.</div>
+                                </div>
+                                <div class="report-fields font-mono">
+                                    <div>Failed Edge: <span id="hr-edge">—</span></div>
+                                    <div>Congestion: <span id="hr-cong">—</span></div>
+                                    <div>Connected: <span id="hr-connected">—</span></div>
+                                    <div>New Path: <span id="hr-newpath">—</span></div>
+                                    <div>Cost: <span id="hr-newcost">—</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="table-section-wrapper glass-card">
+                        <h3 class="card-heading">📋 Transmission Line Status</h3>
+                        <div class="congestion-table-wrapper">
+                            <table class="congestion-table">
+                                <thead><tr><th>#</th><th>Line</th><th>Load</th><th>Status</th><th class="expert-only">Resistance</th><th>Distance</th><th>Action</th></tr></thead>
+                                <tbody id="congestion-tbody"></tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </section>
+    </div>
 
-    <!-- Congestion Table -->
-    <section id="congestion-section" class="section">
-        <div class="container">
-            <div class="section-header">
-                <div class="section-tag">Analysis</div>
-                <h2 class="section-title">Edge Congestion Map</h2>
-                <p class="section-desc">
-                    All transmission lines ranked by ML-predicted congestion score.
-                    Click an edge to simulate its failure.
-                </p>
+    <!-- AI Assistant Panel -->
+    <aside class="ai-assistant-panel" id="ai-assistant-panel">
+        <div class="assistant-header">
+            <h3>🤖 Grid Assistant</h3>
+            <button class="close-btn" onclick="toggleAssistant()">×</button>
+        </div>
+        <div class="assistant-messages" id="assistant-messages">
+            <div class="assistant-msg bot">Hi! Ask me about the grid — try "Why did power reroute?" or "Which line is at highest risk?"</div>
+        </div>
+        <div class="assistant-suggestions">
+            <button onclick="askAssistant('Why did power reroute?')">Why reroute?</button>
+            <button onclick="askAssistant('Which line is at highest risk?')">Highest risk?</button>
+            <button onclick="askAssistant('How many failures occurred?')">Failures?</button>
+            <button onclick="askAssistant('Show me the safest path')">Safest path?</button>
+        </div>
+        <div class="assistant-input-row">
+            <input type="text" id="assistant-input" placeholder="Ask about the grid..." onkeydown="if(event.key==='Enter')askAssistant()">
+            <button class="btn btn-primary btn-sm" onclick="askAssistant()">Send</button>
+        </div>
+    </aside>
+
+    <!-- Guided Tour -->
+    <div id="onboarding-overlay" class="onboarding-overlay hidden">
+        <div class="onboarding-modal glass-card">
+            <div class="modal-header">
+                <h3 class="gradient-text">⚡ Control Center Tour</h3>
+                <button class="close-btn" onclick="closeOnboarding()">×</button>
             </div>
-            <div class="glass-card congestion-table-wrapper">
-                <table class="congestion-table">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Edge</th>
-                            <th>Congestion</th>
-                            <th>Level</th>
-                            <th>Resistance</th>
-                            <th>Length (km)</th>
-                            <th>Age (yrs)</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="congestion-tbody"></tbody>
-                </table>
+            <div class="modal-body">
+                <div class="tour-step active" data-step="1">
+                    <div class="tour-icon">🌐</div>
+                    <h4>Welcome to the Control Center</h4>
+                    <p>This is a real-time AI-powered grid operations dashboard. It predicts overloads and automatically reroutes power to prevent blackouts.</p>
+                </div>
+                <div class="tour-step" data-step="2">
+                    <div class="tour-icon">🎨</div>
+                    <h4>Node & Line Colors</h4>
+                    <ul class="tour-bullets">
+                        <li><span class="bullet-dot gen"></span> <strong>Green circles</strong> = Power plants</li>
+                        <li><span class="bullet-dot sub"></span> <strong>Blue diamonds</strong> = Substations</li>
+                        <li><span class="bullet-dot con"></span> <strong>Orange circles</strong> = Consumers</li>
+                        <li>Lines: 🟢 Healthy → 🟡 Moderate → 🔴 Congested → ⚫ Failed</li>
+                        <li>🔵 Bright blue pulsing = Active power route</li>
+                    </ul>
+                </div>
+                <div class="tour-step" data-step="3">
+                    <div class="tour-icon">▶</div>
+                    <h4>Start a Simulation</h4>
+                    <p>Use the bottom control panel to <strong>Start</strong> the simulation. Try preset scenarios like Heatwave or Storm. Watch lines change color as load shifts.</p>
+                </div>
+                <div class="tour-step" data-step="4">
+                    <div class="tour-icon">🛡️</div>
+                    <h4>Self-Healing & Alerts</h4>
+                    <p>When a line exceeds 85% capacity, it trips automatically and power reroutes. Alerts appear in the Event Log and Timeline. Double-click any line to manually test failures.</p>
+                </div>
+                <div class="tour-step" data-step="5">
+                    <div class="tour-icon">🤖</div>
+                    <h4>Beginner Mode & AI Assistant</h4>
+                    <p>Toggle <strong>Beginner</strong> mode for plain-language labels. Click the 🤖 button to ask the AI assistant questions about what's happening on the grid.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" id="btn-tour-prev" onclick="prevTourStep()" disabled>Back</button>
+                <div class="tour-progress">
+                    <span class="progress-dot active" data-dot="1"></span>
+                    <span class="progress-dot" data-dot="2"></span>
+                    <span class="progress-dot" data-dot="3"></span>
+                    <span class="progress-dot" data-dot="4"></span>
+                    <span class="progress-dot" data-dot="5"></span>
+                </div>
+                <button class="btn btn-primary btn-sm" id="btn-tour-next" onclick="nextTourStep()">Next</button>
             </div>
         </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="container">
-            <div class="footer-sdg">
-                <span class="sdg-badge sdg7">🌿 SDG 7 — Affordable & Clean Energy</span>
-                <span class="sdg-badge sdg9">🏗️ SDG 9 — Industry, Innovation & Infrastructure</span>
-            </div>
-            <p>Predictive Energy Routing — Hybrid ML–A* Optimization</p>
-        </div>
-    </footer>
+    </div>
 
     <script src="/static/app.js"></script>
 </body>

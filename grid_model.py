@@ -5,6 +5,7 @@ NetworkX-based power grid graph construction and management.
 Nodes represent generators, substations, and consumers.
 Edges represent transmission lines with physical and predicted attributes.
 """
+from __future__ import annotations
 
 import numpy as np
 import networkx as nx
@@ -155,6 +156,12 @@ class PowerGrid:
             ("S3", "C7"): {"hour": 13.0, "temperature": 41.0, "weather": 4.0,
                            "historical_load": 560.0, "renewable_generation": 45.0,
                            "voltage": 205.0, "current": 625.0, "previous_congestion": 0.78},
+            ("S5", "S6"): {"hour": 18.0, "temperature": 41.0, "weather": 4.0,
+                           "historical_load": 595.0, "renewable_generation": 22.0,
+                           "voltage": 199.0, "current": 680.0, "previous_congestion": 0.90},
+            ("S6", "C6"): {"hour": 19.0, "temperature": 40.0, "weather": 4.0,
+                           "historical_load": 585.0, "renewable_generation": 20.0,
+                           "voltage": 198.0, "current": 675.0, "previous_congestion": 0.91},
             ("S6", "C7"): {"hour": 18.0, "temperature": 37.0, "weather": 3.0,
                            "historical_load": 540.0, "renewable_generation": 30.0,
                            "voltage": 208.0, "current": 600.0, "previous_congestion": 0.74},
@@ -243,10 +250,16 @@ class PowerGrid:
         # Print summary
         scores = list(congestion_map.values())
         print(f"   📊 Congestion Summary:")
-        print(f"      Mean:     {np.mean(scores):.3f}")
-        print(f"      Max:      {np.max(scores):.3f}")
-        print(f"      Critical: {sum(1 for s in scores if s > CONGESTION_THRESHOLDS['critical'])} edges")
-        print(f"      High:     {sum(1 for s in scores if s > CONGESTION_THRESHOLDS['high'])} edges")
+        if scores:
+            print(f"      Mean:     {np.mean(scores):.3f}")
+            print(f"      Max:      {np.max(scores):.3f}")
+            print(f"      Critical: {sum(1 for s in scores if s > CONGESTION_THRESHOLDS['critical'])} edges")
+            print(f"      High:     {sum(1 for s in scores if s > CONGESTION_THRESHOLDS['high'])} edges")
+        else:
+            print(f"      Mean:     0.000")
+            print(f"      Max:      0.000")
+            print(f"      Critical: 0 edges")
+            print(f"      High:     0 edges")
 
         return congestion_map
 
@@ -286,8 +299,8 @@ class PowerGrid:
         resistance = float(data.get("resistance", 0.0))
         return float(np.clip((current_load / capacity) * resistance, 0.0, 1.0))
 
-    def randomize_loads(self, hour: int | None = None) -> None:
-        """Generate changing electrical loads for simulation ticks."""
+    def randomize_loads(self, hour: int | None = None, scenario: str | None = None, live_weather_data: dict | None = None) -> None:
+        """Generate changing electrical loads for simulation ticks with scenario stress options."""
         if hour is None:
             hour = int(self.rng.integers(0, 24))
         for _, _, data in self.graph.edges(data=True):
@@ -295,9 +308,46 @@ class PowerGrid:
                 continue
             features = data["features"]
             features["hour"] = float(hour)
-            multiplier = 1.0 + 0.25 * np.sin((hour - 6) * np.pi / 12)
-            features["historical_load"] = float(np.clip(features["historical_load"] * multiplier + self.rng.normal(0, 25), 80, 620))
-            features["renewable_generation"] = float(np.clip(features["renewable_generation"] + self.rng.normal(0, 18), 0, 260))
+            
+            # Scenario specific overrides
+            if scenario == "live" and live_weather_data:
+                # Live Weather scenario: Map real API data to grid features
+                temp = float(live_weather_data.get("temperature", 25.0))
+                wind = float(live_weather_data.get("windspeed", 10.0))
+                features["temperature"] = temp
+                features["weather"] = float(live_weather_data.get("weathercode", 0))
+                
+                # High AC load if hot, High heating load if very cold
+                temp_stress = max(0, temp - 30) * 0.05 + max(0, 5 - temp) * 0.03
+                load_multiplier = 1.0 + 0.25 * np.sin((hour - 6) * np.pi / 12) + temp_stress
+                features["historical_load"] = float(np.clip(features["historical_load"] * load_multiplier + self.rng.normal(0, 25), 80, 650))
+                
+                # Renewable scales heavily with real wind speed (km/h)
+                wind_factor = np.clip(wind / 20.0, 0.2, 2.5)
+                features["renewable_generation"] = float(np.clip(features["renewable_generation"] * wind_factor + self.rng.normal(0, 15), 0, 300))
+                
+            elif scenario == "heatwave":
+                # Heatwave scenario: Extreme temperature, high customer load due to AC units
+                features["temperature"] = float(self.rng.normal(42.0, 2.0))
+                features["weather"] = 4.0  # Heatwave code
+                load_multiplier = 1.35 + 0.15 * np.sin((hour - 6) * np.pi / 12)
+                features["historical_load"] = float(np.clip(features["historical_load"] * load_multiplier + self.rng.normal(0, 25), 250, 620))
+                features["renewable_generation"] = float(np.clip(features["renewable_generation"] * 0.7 + self.rng.normal(0, 10), 0, 150)) # Wind drops in heat
+            elif scenario == "storm":
+                # Storm scenario: Heavy wind/rain, lower temperatures, potential line faults
+                features["temperature"] = float(self.rng.normal(12.0, 3.0))
+                features["weather"] = 3.0  # Storm code
+                load_multiplier = 1.1 + 0.1 * np.sin((hour - 6) * np.pi / 12)
+                features["historical_load"] = float(np.clip(features["historical_load"] * load_multiplier + self.rng.normal(0, 20), 100, 520))
+                features["renewable_generation"] = float(np.clip(features["renewable_generation"] * 1.5 + self.rng.normal(0, 30), 50, 260)) # High wind generation
+            else:
+                # Normal scenario
+                load_multiplier = 1.0 + 0.25 * np.sin((hour - 6) * np.pi / 12)
+                features["temperature"] = float(np.clip(self.rng.normal(25, 8), -5, 48))
+                features["weather"] = float(self.rng.choice([0, 1, 2, 3, 4], p=[0.42, 0.28, 0.16, 0.07, 0.07]))
+                features["historical_load"] = float(np.clip(features["historical_load"] * load_multiplier + self.rng.normal(0, 25), 80, 620))
+                features["renewable_generation"] = float(np.clip(features["renewable_generation"] + self.rng.normal(0, 18), 0, 260))
+
             features["voltage"] = float(np.clip(232 - 0.035 * features["historical_load"] + 0.03 * features["renewable_generation"] + self.rng.normal(0, 4), 185, 250))
             features["current"] = float(np.clip((features["historical_load"] * 1000) / max(features["voltage"], 1) + self.rng.normal(0, 25), 80, 700))
             features["previous_congestion"] = float(max(

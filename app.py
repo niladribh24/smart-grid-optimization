@@ -6,6 +6,7 @@ web frontend for visualizing the Predictive Energy Routing system.
 """
 
 import json
+import logging
 import numpy as np
 from flask import Flask, jsonify, request, send_from_directory
 
@@ -14,14 +15,21 @@ from ml_predictor import CongestionPredictor
 from grid_model import PowerGrid
 from astar_router import EnergyRouter
 from self_healing import SelfHealingSystem
+from weather_api import weather_client
 
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 # ─────────────────────────────────────────────
 # Global pipeline state (initialized on startup)
 # ─────────────────────────────────────────────
-pipeline_data = {}
+pipeline_data = {
+    "source": "G1",
+    "target": "C6",
+    "live_city": "New York",
+    "live_weather": None
+}
 simulation_tick = 0
 reroute_count = 0
 
@@ -62,30 +70,26 @@ def run_pipeline():
 
     # Step 7: Self-healing demo
     healer = SelfHealingSystem(grid, router)
-    congestion_scores = [(u, v, d["congestion_score"])
-                         for u, v, d in G.edges(data=True)]
-    congestion_scores.sort(key=lambda x: x[2], reverse=True)
-    most_congested = congestion_scores[0]
-    fail_u, fail_v = most_congested[0], most_congested[1]
+    healing_cycle = healer.full_healing_cycle(source, target)
 
-    original_route = router.find_optimal_route(G, source, target)
-    failure_report = healer.simulate_failure(fail_u, fail_v)
-    connectivity = healer.dfs_connectivity_check()
-    reroute_result = healer.reroute_after_failure(source, target, (fail_u, fail_v))
+    rr = healing_cycle.get("reroute_result") or {}
+    new_route = rr.get("new_route")
+    original_route = healing_cycle.get("original_route")
+    failed = healing_cycle.get("failed_edge")
 
     healing_result = {
-        "failed_edge": [fail_u, fail_v],
-        "congestion_at_failure": float(most_congested[2]),
-        "is_connected": connectivity["is_connected"],
-        "num_components": connectivity["num_components"],
-        "reroute_success": reroute_result["success"],
+        "failed_edge": [failed[0], failed[1]] if failed else [],
+        "congestion_at_failure": float(failed[2]) if failed else 0.0,
+        "is_connected": healing_cycle.get("failure_report", {}).get("connectivity", {}).get("is_connected", True),
+        "num_components": healing_cycle.get("failure_report", {}).get("connectivity", {}).get("num_components", 1),
+        "reroute_success": rr.get("success", False),
+        "path_changed": rr.get("path_changed", False),
+        "destination_isolated": rr.get("destination_isolated", False),
+        "explanation": rr.get("explanation", ""),
         "original_path": original_route["path"] if original_route else [],
-        "new_path": reroute_result["new_route"]["path"] if reroute_result["new_route"] else [],
-        "new_cost": float(reroute_result["new_route"]["total_cost"]) if reroute_result["new_route"] else 0,
+        "new_path": new_route["path"] if new_route else [],
+        "new_cost": float(new_route["total_cost"]) if new_route else 0,
     }
-
-    # Restore edge
-    grid.restore_edge(fail_u, fail_v)
 
     # Serialize graph
     nodes = []
@@ -99,22 +103,7 @@ def run_pipeline():
             "label": data.get("label", node_id),
         })
 
-    edges = []
-    for u, v, data in G.edges(data=True):
-        edges.append({
-            "source": u,
-            "target": v,
-            "congestion_score": float(data.get("congestion_score", 0)),
-            "current_load": float(data.get("current_load", 0)),
-            "transmission_loss": float(data.get("transmission_loss", 0)),
-            "resistance": float(data.get("resistance", 0)),
-            "edge_weight": float(router._edge_cost(u, v, data)),
-            "length_km": float(data.get("length_km", 0)),
-            "age": float(data.get("age", 0)),
-            "health_status": data.get("health_status", "Healthy"),
-            "capacity": float(data.get("capacity", 0)),
-            "is_failed": data.get("is_failed", False),
-        })
+    edges = serialize_edges(grid, router)
 
     # Sort edges by congestion for heatmap
     edges_sorted = sorted(edges, key=lambda e: e["congestion_score"], reverse=True)
@@ -169,6 +158,9 @@ def serialize_edges(grid, router):
     """Return JSON-safe edge data for the current grid state."""
     edges = []
     for u, v, data in grid.graph.edges(data=True):
+        weight = router._edge_cost(u, v, data)
+        if weight == float('inf'):
+            weight = 999999.0
         edges.append({
             "source": u,
             "target": v,
@@ -176,7 +168,7 @@ def serialize_edges(grid, router):
             "current_load": float(data.get("current_load", 0)),
             "transmission_loss": float(data.get("transmission_loss", 0)),
             "resistance": float(data.get("resistance", 0)),
-            "edge_weight": float(router._edge_cost(u, v, data)),
+            "edge_weight": float(weight),
             "length_km": float(data.get("length_km", 0)),
             "age": float(data.get("age", 0)),
             "capacity": float(data.get("capacity", 0)),
@@ -263,13 +255,14 @@ def reroute():
 
 @app.route("/api/heal", methods=["POST"])
 def heal():
-    """Simulate failure on a specific edge and reroute."""
+    """Simulate failure on a route-aware edge and reroute."""
     global reroute_count
-    data = request.get_json()
+    data = request.get_json() or {}
     fail_u = data.get("edge_u")
     fail_v = data.get("edge_v")
     source = data.get("source", "G1")
     target = data.get("target", "C6")
+    persist = bool(data.get("persist", False))
 
     grid = pipeline_data.get("_grid_obj")
     router = pipeline_data.get("_router_obj")
@@ -278,43 +271,127 @@ def heal():
     if not grid or not router:
         return jsonify({"error": "Pipeline not initialized"}), 500
 
-    G = grid.graph
+    if not healer:
+        healer = SelfHealingSystem(grid, router)
 
-    # Get original route
-    original_route = router.find_optimal_route(G, source, target)
+    original_route = router.find_optimal_route(grid.graph, source, target)
+    original_path = original_route["path"] if original_route else []
 
-    # Get congestion of failing edge
-    cong = 0
-    if G.has_edge(fail_u, fail_v):
-        cong = G[fail_u][fail_v].get("congestion_score", 0)
+    if fail_u and fail_v:
+        cong = grid.graph[fail_u][fail_v].get("congestion_score", 0) if grid.graph.has_edge(fail_u, fail_v) else 0
+        failure_report = healer.simulate_failure(fail_u, fail_v)
+    else:
+        pick = healer.select_failure_edge(original_path)
+        if not pick:
+            return jsonify({"error": "No congested edges available to heal"}), 400
+        fail_u, fail_v, cong = pick
+        failure_report = healer.simulate_failure(fail_u, fail_v)
 
-    # Simulate failure
-    grid.remove_edge(fail_u, fail_v)
-
-    # DFS check
-    healer_temp = SelfHealingSystem(grid, router)
-    connectivity = healer_temp.dfs_connectivity_check()
-
-    # Reroute
-    reroute_result = healer_temp.reroute_after_failure(source, target, (fail_u, fail_v))
+    connectivity = healer.dfs_connectivity_check()
+    reroute_result = healer.reroute_after_failure(
+        source, target, (fail_u, fail_v), original_path=original_path
+    )
     reroute_count += 1
 
-    # Restore
-    grid.restore_edge(fail_u, fail_v)
+    if not persist:
+        grid.restore_edge(fail_u, fail_v)
 
+    new_route = reroute_result.get("new_route")
     result = {
         "failed_edge": [fail_u, fail_v],
         "congestion_at_failure": float(cong),
         "is_connected": connectivity["is_connected"],
         "num_components": connectivity["num_components"],
         "reroute_success": reroute_result["success"],
-        "original_path": original_route["path"] if original_route else [],
-        "new_path": reroute_result["new_route"]["path"] if reroute_result["new_route"] else [],
-        "new_cost": float(reroute_result["new_route"]["total_cost"]) if reroute_result["new_route"] else 0,
-        "dashboard": build_dashboard(grid, router, source, target, reroute_result["new_route"]),
+        "path_changed": reroute_result["path_changed"],
+        "destination_isolated": reroute_result["destination_isolated"],
+        "explanation": reroute_result["explanation"],
+        "original_path": original_path,
+        "new_path": new_route["path"] if new_route else [],
+        "new_cost": float(new_route["total_cost"]) if new_route else 0,
+        "persisted_failure": persist,
+        "grid": {"edges": serialize_edges(grid, router)},
+        "dashboard": build_dashboard(grid, router, source, target, new_route),
     }
     return jsonify(result)
 
+
+@app.route("/api/toggle_edge", methods=["POST"])
+def toggle_edge():
+    """Manually fail or repair a specific edge in the grid graph."""
+    global reroute_count
+    data = request.get_json()
+    u = data.get("edge_u")
+    v = data.get("edge_v")
+    action = data.get("action")  # "fail" or "restore"
+    source = data.get("source", "G1")
+    target = data.get("target", "C6")
+
+    grid = pipeline_data.get("_grid_obj")
+    router = pipeline_data.get("_router_obj")
+
+    if not grid or not router:
+        return jsonify({"error": "Pipeline not initialized"}), 500
+
+    original_route = router.find_optimal_route(grid.graph, source, target)
+    original_path = original_route["path"] if original_route else []
+
+    if action == "fail":
+        grid.remove_edge(u, v)
+        status = "failed"
+    else:
+        grid.restore_edge(u, v)
+        status = "restored"
+
+    healer_temp = SelfHealingSystem(grid, router)
+    connectivity = healer_temp.dfs_connectivity_check()
+
+    if status == "failed":
+        reroute_result = healer_temp.reroute_after_failure(
+            source, target, (u, v), original_path=original_path
+        )
+        route = reroute_result.get("new_route")
+        reroute_count += 1
+    else:
+        route = router.find_optimal_route(grid.graph, source, target)
+        reroute_result = None
+
+    edges = serialize_edges(grid, router)
+    return jsonify({
+        "status": status,
+        "grid": {"edges": edges},
+        "connectivity": connectivity,
+        "route": {
+            "path": route["path"] if route else [],
+            "total_cost": float(route["total_cost"]) if route else 0.0,
+            "avg_congestion": float(route["avg_congestion"]) if route else 0.0,
+            "num_hops": route["num_hops"] if route else 0,
+            "edge_details": route["edge_details"] if route else [],
+        } if route else None,
+        "destination_isolated": route is None,
+        "path_changed": reroute_result["path_changed"] if reroute_result else False,
+        "explanation": reroute_result["explanation"] if reroute_result else "",
+        "dashboard": build_dashboard(grid, router, source, target, route),
+        "edges_by_congestion": sorted(edges, key=lambda e: e["congestion_score"], reverse=True),
+    })
+
+
+@app.route("/api/weather", methods=["GET", "POST"])
+def get_weather():
+    global pipeline_data
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        city = data.get("city", "New York")
+        pipeline_data["live_city"] = city
+        
+    city = pipeline_data.get("live_city", "New York")
+    weather_data = weather_client.get_weather(city)
+    
+    if "error" not in weather_data:
+        pipeline_data["live_weather"] = weather_data
+        pipeline_data["live_city"] = weather_data.get("city", city)
+        
+    return jsonify(weather_data)
 
 @app.route("/api/simulate", methods=["POST"])
 def simulate_tick():
@@ -333,18 +410,24 @@ def simulate_tick():
         return jsonify({"error": "Pipeline not initialized"}), 500
 
     simulation_tick += 1
-    grid.randomize_loads(hour=simulation_tick % 24)
+    scenario = data.get("scenario", "normal")
+    
+    # Pass live weather to grid if scenario is live
+    live_weather_data = None
+    if scenario == "live":
+        live_weather_data = pipeline_data.get("live_weather")
+        
+    grid.randomize_loads(hour=simulation_tick % 24, scenario=scenario, live_weather_data=live_weather_data)
     grid.update_congestion(predictor)
 
     healer = SelfHealingSystem(grid, router)
-    failed_this_tick = []
-    for u, v, score in healer.detect_critical_edges():
-        grid.remove_edge(u, v)
-        failed_this_tick.append({"source": u, "target": v, "congestion_score": float(score)})
+    healing = healer.process_congestion_failures(source, target)
+    failed_this_tick = healing["failed_edges"]
+    connectivity = healing["connectivity"]
+    reroute_result = healing["reroute_result"]
+    route = reroute_result.get("new_route")
 
-    connectivity = healer.dfs_connectivity_check()
-    route = router.find_optimal_route(grid.graph, source, target)
-    if failed_this_tick:
+    if failed_this_tick and route:
         reroute_count += 1
 
     edges = serialize_edges(grid, router)
@@ -362,7 +445,10 @@ def simulate_tick():
             "num_hops": route["num_hops"] if route else 0,
             "edge_details": route["edge_details"] if route else [],
         } if route else None,
-        "destination_isolated": route is None,
+        "destination_isolated": healing["destination_isolated"],
+        "path_changed": healing["path_changed"],
+        "explanation": healing["explanation"],
+        "original_path": healing["original_path"],
         "dashboard": build_dashboard(grid, router, source, target, route),
         "edges_by_congestion": sorted(edges, key=lambda e: e["congestion_score"], reverse=True),
     })

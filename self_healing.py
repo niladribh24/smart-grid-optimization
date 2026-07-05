@@ -6,8 +6,24 @@ and triggers A* rerouting to prevent blackouts.
 """
 
 import networkx as nx
+from typing import Optional, Tuple
 
 from config import HEALING_CONFIG, CONGESTION_THRESHOLDS
+
+
+def edges_on_path(path: list) -> list:
+    """Return (u, v) tuples for consecutive nodes on a path."""
+    if not path or len(path) < 2:
+        return []
+    return [(path[i], path[i + 1]) for i in range(len(path) - 1)]
+
+
+def edge_in_path(u: str, v: str, path: list) -> bool:
+    """Check whether an undirected edge appears on a path."""
+    for a, b in edges_on_path(path):
+        if (u, v) == (a, b) or (v, u) == (a, b):
+            return True
+    return False
 
 
 class SelfHealingSystem:
@@ -77,6 +93,70 @@ class SelfHealingSystem:
         critical.sort(key=lambda x: x[2], reverse=True)
         return critical
 
+    def critical_edges_on_path(self, path: list) -> list:
+        """Critical edges (>= failure threshold) that lie on the given path."""
+        if not path:
+            return []
+        return [
+            (u, v, score) for u, v, score in self.detect_critical_edges()
+            if edge_in_path(u, v, path)
+        ]
+
+    def select_failure_edge(self, route_path: list) -> Optional[Tuple[str, str, float]]:
+        """
+        Pick the edge to fail for healing demos and manual triggers.
+
+        Priority:
+          1. Highest-congestion critical edge on the current route
+          2. Highest-congestion critical edge anywhere
+          3. Highest-congestion edge on the current route (warning level)
+        """
+        if not route_path:
+            return None
+
+        on_route_critical = self.critical_edges_on_path(route_path)
+        if on_route_critical:
+            return on_route_critical[0]
+
+        on_route = []
+        for u, v, score in self.detect_at_risk_edges():
+            if edge_in_path(u, v, route_path):
+                on_route.append((u, v, score))
+        if on_route:
+            return on_route[0]
+
+        highest_on_route = self._highest_congestion_on_path(route_path)
+        if highest_on_route and highest_on_route[2] >= HEALING_CONFIG["failure_threshold"]:
+            return highest_on_route
+
+        critical = self.detect_critical_edges()
+        if critical:
+            return critical[0]
+
+        return None
+
+    def _highest_congestion_on_path(self, path: list) -> Optional[Tuple[str, str, float]]:
+        """Highest-congestion active edge along a path."""
+        candidates = []
+        for u, v in edges_on_path(path):
+            if not self.grid.graph.has_edge(u, v):
+                continue
+            data = self.grid.graph[u][v]
+            if data.get("is_failed", False):
+                continue
+            candidates.append((u, v, data.get("congestion_score", 0.0)))
+        candidates.sort(key=lambda x: x[2], reverse=True)
+        return candidates[0] if candidates else None
+
+    def check_source_target_connected(self, source: str, target: str,
+                                      graph: nx.Graph = None) -> bool:
+        """Return True when an active path exists between source and target."""
+        if graph is None:
+            graph = self.grid.get_active_graph()
+        if source not in graph or target not in graph:
+            return False
+        return nx.has_path(graph, source, target)
+
     def dfs_connectivity_check(self, graph: nx.Graph = None) -> dict:
         """
         Check network connectivity using Depth-First Search.
@@ -119,6 +199,16 @@ class SelfHealingSystem:
         consumers = self.grid.get_consumers()
         isolated_gens = []
         isolated_cons = []
+
+        if not components:
+            return {
+                "is_connected": False,
+                "num_components": 0,
+                "components": [],
+                "isolated_generators": generators,
+                "isolated_consumers": consumers,
+                "total_nodes": 0,
+            }
 
         if not is_connected:
             # Find which component has the most generators (main grid)
@@ -187,7 +277,8 @@ class SelfHealingSystem:
         return failure_report
 
     def reroute_after_failure(self, source: str, target: str,
-                              failed_edge: tuple = None) -> dict:
+                              failed_edge: tuple = None,
+                              original_path: list = None) -> dict:
         """
         Find an alternate route after a line failure.
 
@@ -199,6 +290,8 @@ class SelfHealingSystem:
             Target node.
         failed_edge : tuple, optional
             The (u, v) edge that failed (for logging).
+        original_path : list, optional
+            Path before failure (for change detection).
 
         Returns
         -------
@@ -207,9 +300,30 @@ class SelfHealingSystem:
         """
         print(f"\n   🔄 Rerouting energy from {source} to {target}...")
 
-        # Find new route on the active graph
-        active_graph = self.grid.get_active_graph()
-        new_route = self.router.find_optimal_route(active_graph, source, target)
+        if original_path is None:
+            original_path = []
+
+        connected = self.check_source_target_connected(source, target)
+        if not connected:
+            print(f"      ❌ Destination {target} is isolated from {source}!")
+            reroute_result = {
+                "source": source,
+                "target": target,
+                "failed_edge": failed_edge,
+                "original_path": original_path,
+                "new_route": None,
+                "success": False,
+                "path_changed": False,
+                "destination_isolated": True,
+                "explanation": (
+                    f"Transmission line failure disconnected {target} from the grid. "
+                    "No alternate path is available."
+                ),
+            }
+            self.reroute_log.append(reroute_result)
+            return reroute_result
+
+        new_route = self.router.find_optimal_route(self.grid.graph, source, target)
 
         if new_route:
             print(f"      ✅ Alternate route found: {' → '.join(new_route['path'])}")
@@ -217,16 +331,83 @@ class SelfHealingSystem:
         else:
             print(f"      ❌ No alternate route available!")
 
+        new_path = new_route["path"] if new_route else []
+        path_changed = bool(original_path) and new_path != original_path
+        failed_on_route = (
+            failed_edge
+            and original_path
+            and edge_in_path(failed_edge[0], failed_edge[1], original_path)
+        )
+
+        if new_route and path_changed:
+            explanation = (
+                "The original transmission line became overloaded or failed. "
+                "Power was redirected through a safer route with lower expected cost."
+            )
+        elif new_route and failed_on_route and not path_changed:
+            explanation = (
+                "The overloaded line was removed, but the optimal A* path "
+                "already avoided that segment."
+            )
+        elif new_route:
+            explanation = "Optimal route recalculated on the active grid."
+        else:
+            explanation = (
+                f"Destination {target} is isolated — no path exists from {source}."
+            )
+
         reroute_result = {
             "source": source,
             "target": target,
             "failed_edge": failed_edge,
+            "original_path": original_path,
             "new_route": new_route,
             "success": new_route is not None,
+            "path_changed": path_changed,
+            "destination_isolated": new_route is None,
+            "explanation": explanation,
         }
 
         self.reroute_log.append(reroute_result)
         return reroute_result
+
+    def process_congestion_failures(self, source: str, target: str) -> dict:
+        """
+        Self-healing cycle for live simulation:
+          1. Fail all edges above the congestion threshold
+          2. Verify connectivity with DFS
+          3. Recalculate route with A*
+        """
+        original_route = self.router.find_optimal_route(self.grid.graph, source, target)
+        original_path = original_route["path"] if original_route else []
+
+        failed_edges = []
+        for u, v, score in self.detect_critical_edges():
+            self.grid.remove_edge(u, v)
+            failed_edges.append({
+                "source": u,
+                "target": v,
+                "congestion_score": float(score),
+            })
+
+        connectivity = self.dfs_connectivity_check()
+        reroute_result = self.reroute_after_failure(
+            source,
+            target,
+            failed_edge=None,
+            original_path=original_path,
+        )
+
+        return {
+            "failed_edges": failed_edges,
+            "original_path": original_path,
+            "connectivity": connectivity,
+            "reroute_result": reroute_result,
+            "destination_isolated": reroute_result["destination_isolated"],
+            "healing_success": reroute_result["success"],
+            "path_changed": reroute_result["path_changed"],
+            "explanation": reroute_result["explanation"],
+        }
 
     def full_healing_cycle(self, source: str, target: str) -> dict:
         """
@@ -266,18 +447,23 @@ class SelfHealingSystem:
 
         # Step 2: Find the route BEFORE failure
         original_route = self.router.find_optimal_route(self.grid.graph, source, target)
+        original_path = original_route["path"] if original_route else []
 
-        # Step 3: Simulate failure of the most congested edge
-        if at_risk:
-            fail_u, fail_v, fail_score = at_risk[0]
+        # Step 3: Fail the worst edge on the active route (critical first)
+        failure_pick = self.select_failure_edge(original_path)
+        if failure_pick:
+            fail_u, fail_v, fail_score = failure_pick
             failure_report = self.simulate_failure(fail_u, fail_v)
 
             # Step 4: Reroute
             reroute_result = self.reroute_after_failure(
-                source, target, failed_edge=(fail_u, fail_v)
+                source,
+                target,
+                failed_edge=(fail_u, fail_v),
+                original_path=original_path,
             )
 
-            # Step 5: Restore edge for future use
+            # Step 5: Restore edge for future use (demo only)
             self.grid.restore_edge(fail_u, fail_v)
 
             return {
@@ -288,6 +474,8 @@ class SelfHealingSystem:
                 "failure_report": failure_report,
                 "reroute_result": reroute_result,
                 "healing_success": reroute_result["success"],
+                "path_changed": reroute_result["path_changed"],
+                "explanation": reroute_result["explanation"],
             }
         else:
             print("\n   ✅ No edges at risk. Grid is healthy!")

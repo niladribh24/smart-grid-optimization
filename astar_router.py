@@ -38,6 +38,21 @@ class EnergyRouter:
         self.alpha = alpha or ROUTING_CONFIG["alpha"]
         self.beta = beta or ROUTING_CONFIG["beta"]
         self.congestion_penalty = ROUTING_CONFIG["congestion_penalty"]
+        self._max_resistance = 1.0
+
+    def _set_resistance_scale(self, graph: nx.Graph) -> None:
+        """Cache max resistance so edge costs stay on a comparable 0–1 scale."""
+        resistances = [
+            data.get("resistance", 0.1)
+            for _, _, data in graph.edges(data=True)
+            if not data.get("is_failed", False)
+        ]
+        self._max_resistance = max(resistances) if resistances else 1.0
+
+    def _normalized_resistance(self, resistance: float) -> float:
+        if self._max_resistance <= 0:
+            return resistance
+        return resistance / self._max_resistance
 
     def _edge_cost(self, u, v, data: dict) -> float:
         """
@@ -45,9 +60,9 @@ class EnergyRouter:
 
         Combines physical resistance/loss with ML-predicted congestion.
         """
-        resistance = data.get("resistance", 0.1)
+        resistance = self._normalized_resistance(data.get("resistance", 0.1))
         congestion = data.get("congestion_score", 0.0)
-        transmission_loss = data.get("transmission_loss", 0.0)
+        transmission_loss = min(float(data.get("transmission_loss", 0.0)), 1.0)
 
         # Skip failed edges entirely
         if data.get("is_failed", False):
@@ -92,6 +107,7 @@ class EnergyRouter:
             Route information including path, costs, and per-edge details.
         """
         # Build working graph (exclude failed edges)
+        self._set_resistance_scale(graph)
         working_graph = nx.Graph()
         for u, v, data in graph.edges(data=True):
             if not data.get("is_failed", False):
@@ -165,11 +181,15 @@ class EnergyRouter:
         Uses only physical resistance as edge weight.
         This serves as a baseline comparison.
         """
-        # Build graph with only physical costs
+        # Build graph with only physical costs (same weights, no congestion term)
+        self._set_resistance_scale(graph)
         working_graph = nx.Graph()
         for u, v, data in graph.edges(data=True):
             if not data.get("is_failed", False):
-                physical_cost = data.get("transmission_loss", 0.0) + data.get("resistance", 0.1)
+                physical_cost = (
+                    ROUTING_CONFIG["loss_weight"] * min(float(data.get("transmission_loss", 0.0)), 1.0)
+                    + ROUTING_CONFIG["resistance_weight"] * self._normalized_resistance(data.get("resistance", 0.1))
+                )
                 working_graph.add_edge(u, v, weight=physical_cost, **data)
 
         for node, data in graph.nodes(data=True):

@@ -23,20 +23,17 @@ def main(ticks: int = 5, source: str = "G1", target: str = "C6") -> None:
         grid.randomize_loads(hour=tick % 24)
         grid.update_congestion(predictor)
         healer = SelfHealingSystem(grid, router)
-
-        failed = []
-        for u, v, score in healer.detect_critical_edges():
-            grid.remove_edge(u, v)
-            failed.append((u, v, score))
-
-        route = router.find_optimal_route(graph, source, target)
-        if failed:
+        healing = healer.process_congestion_failures(source, target)
+        failed = healing["failed_edges"]
+        route = healing["reroute_result"].get("new_route")
+        if failed and route:
             reroutes += 1
 
         if route:
+            changed = " (rerouted)" if healing["path_changed"] else ""
             print(
                 f"tick={tick} path={' -> '.join(route['path'])} "
-                f"cost={route['total_cost']:.4f} failed={len(failed)} reroutes={reroutes}"
+                f"cost={route['total_cost']:.4f} failed={len(failed)} reroutes={reroutes}{changed}"
             )
         else:
             print(f"tick={tick} destination {target} is isolated failed={len(failed)}")
