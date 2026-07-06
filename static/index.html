@@ -6,9 +6,11 @@
     <meta name="description" content="AI Smart Grid Control Center — Predictive Energy Routing with Self-Healing">
     <title>AI Smart Grid Control Center</title>
     <link rel="stylesheet" href="/static/styles_v6.css">
+    <link rel="stylesheet" href="/static/styles_qol.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="/static/app_v4.js" defer></script>
+    <script src="/static/app_qol.js" defer></script>
 </head>
 <body>
 
@@ -55,20 +57,20 @@
                 <span class="brand-text">Grid AI</span>
             </div>
             <nav class="sidebar-nav">
-                <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')" title="Dashboard">
-                    <span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span>
+                <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')" title="Overview">
+                    <span class="nav-icon">🏠</span><span class="nav-label">Overview</span>
                 </button>
-                <button class="nav-item" data-view="simulation" onclick="switchView('simulation')" title="Live Simulation">
-                    <span class="nav-icon">⚡</span><span class="nav-label">Live Simulation</span>
+                <button class="nav-item" data-view="simulation" onclick="switchView('simulation')" title="Test scenarios">
+                    <span class="nav-icon">⚡</span><span class="nav-label">Test scenarios</span>
                 </button>
-                <button class="nav-item" data-view="ml" onclick="switchView('ml')" title="AI Predictions">
-                    <span class="nav-icon">🧠</span><span class="nav-label">AI Predictions</span>
+                <button class="nav-item" data-view="ml" onclick="switchView('ml')" title="Why routes change">
+                    <span class="nav-icon">🧠</span><span class="nav-label">Why routes change</span>
                 </button>
-                <button class="nav-item" data-view="analytics" onclick="switchView('analytics')" title="Analytics">
-                    <span class="nav-icon">📈</span><span class="nav-label">Analytics</span>
+                <button class="nav-item" data-view="analytics" onclick="switchView('analytics')" title="Charts">
+                    <span class="nav-icon">📈</span><span class="nav-label">Charts</span>
                 </button>
-                <button class="nav-item" data-view="topology" onclick="switchView('topology')" title="Grid Topology">
-                    <span class="nav-icon">🗺</span><span class="nav-label">Grid Topology</span>
+                <button class="nav-item" data-view="topology" onclick="switchView('topology')" title="Route details">
+                    <span class="nav-icon">🗺</span><span class="nav-label">Route details</span>
                 </button>
                 <div class="sidebar-divider"></div>
                 <button class="nav-item" onclick="exportLogsToCSV()" title="Export">
@@ -86,7 +88,7 @@
             <!-- Top Bar -->
             <header class="topbar">
                 <div class="topbar-left">
-                    <h1 class="topbar-title">AI Smart Grid <span class="accent">Control Center</span></h1>
+                    <h1 class="topbar-title">Smart Grid <span class="accent">Overview</span></h1>
                     <div class="topbar-time font-mono" id="sim-time-display">00:00</div>
                 </div>
                 <div class="topbar-center">
@@ -113,10 +115,23 @@
 
             <!-- ═══ VIEW: Dashboard (main ops center) ═══ -->
             <div id="view-dashboard" class="view active">
+                <div class="dashboard-brief glass-card">
+                    <div class="brief-copy">
+                        <div class="brief-kicker">Overview</div>
+                        <h2>What the grid is doing right now</h2>
+                        <p id="plain-summary">Loading the current route and grid condition...</p>
+                    </div>
+                    <div class="brief-actions">
+                        <button class="btn btn-primary btn-sm" onclick="focusActiveRoute()">Focus active route</button>
+                        <button class="btn btn-secondary btn-sm" onclick="switchView('simulation')">Open simulation</button>
+                        <button class="btn btn-dark btn-sm" onclick="resetGraphView()">Reset graph view</button>
+                    </div>
+                </div>
                 <div class="ops-layout">
                     <div class="graph-column">
                         <!-- Interactive Legend -->
                         <div class="interactive-legend" id="interactive-legend">
+                            <span class="legend-title">Filter the map</span>
                             <button class="legend-item" data-filter="generator" onclick="setLegendFilter('generator')">
                                 <span class="legend-dot gen"></span><span class="legend-text">Power Plants</span>
                             </button>
@@ -142,6 +157,16 @@
                         </div>
 
                         <div class="graph-panel glass-card" id="graph-panel">
+                            <div class="graph-story-card">
+                                <div class="graph-story-kicker">Current flow</div>
+                                <h3 id="graph-title">Preparing route summary...</h3>
+                                <p id="graph-subtitle">The graph will explain the safest route once the model loads.</p>
+                                <div class="graph-chip-row">
+                                    <span class="graph-chip">Source <strong id="graph-source">G1</strong></span>
+                                    <span class="graph-chip">Destination <strong id="graph-target">C6</strong></span>
+                                    <span class="graph-chip">Status <strong id="graph-health">Checking...</strong></span>
+                                </div>
+                            </div>
                             <div class="graph-controls">
                                 <button class="gctrl-btn" onclick="zoomGraph(1.2)" title="Zoom In">+</button>
                                 <button class="gctrl-btn" onclick="zoomGraph(0.8)" title="Zoom Out">−</button>
@@ -150,7 +175,7 @@
                                 <button class="gctrl-btn" onclick="toggleLabels()" title="Toggle Labels" id="btn-labels">Aa</button>
                             </div>
 
-                            <div class="map-hint font-mono" id="map-hint">Click nodes to route · Double-click lines to fail/repair</div>
+                            <div class="map-hint" id="map-hint">Click one node for the source, then one for the destination. Double-click a line only if you want to test a failure.</div>
 
                             <div class="svg-viewport" id="svg-viewport">
                                 <svg id="grid-svg" viewBox="-15 -10 530 430" xmlns="http://www.w3.org/2000/svg">
@@ -209,10 +234,48 @@
 
                     <!-- Right Panel -->
                     <aside class="right-panel">
-                        <!-- AI Status Card -->
-                        <div class="dash-card glass-card ai-card">
+                        <div class="dash-card glass-card status-card">
                             <div class="card-header">
-                                <h3>🧠 AI Status</h3>
+                                <h3>Current route summary</h3>
+                            </div>
+                            <p class="plain-card-summary" id="plain-card-summary">Reading the current grid state...</p>
+                            <div class="plain-card-points">
+                                <div class="plain-point">
+                                    <span class="plain-point-label">Best action now</span>
+                                    <span class="plain-point-value" id="plain-next-step">Waiting for model output</span>
+                                </div>
+                                <div class="plain-point">
+                                    <span class="plain-point-label">Most important line</span>
+                                    <span class="plain-point-value" id="plain-top-risk">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="dash-card glass-card guide-card">
+                            <div class="card-header">
+                                <h3>How to read the map</h3>
+                            </div>
+                            <p class="guide-caption" id="prediction-explainer">The forecast model checks which lines are likely to get too busy soon. The route avoids those lines before they become a problem.</p>
+                            <div class="plain-card-points guide-points">
+                                <div class="plain-point">
+                                    <span class="plain-point-label">Blue glowing line</span>
+                                    <span class="plain-point-value">The route currently carrying power from the source to the destination.</span>
+                                </div>
+                                <div class="plain-point">
+                                    <span class="plain-point-label">Orange or red line</span>
+                                    <span class="plain-point-value">A line under pressure. The route may move away from it if it gets worse.</span>
+                                </div>
+                                <div class="plain-point">
+                                    <span class="plain-point-label">Black line</span>
+                                    <span class="plain-point-value">A failed or shut-off line. It cannot be used until it is repaired.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AI Status Card -->
+                        <div class="dash-card glass-card ai-card overview-secondary">
+                            <div class="card-header">
+                                <h3>Model health</h3>
                                 <div class="ai-pulse" aria-hidden="true"></div>
                             </div>
                             <div class="ai-stats">
@@ -225,8 +288,8 @@
                         </div>
 
                         <!-- Current Route Card -->
-                        <div class="dash-card glass-card">
-                            <h3>🔵 Current Route</h3>
+                        <div class="dash-card glass-card route-card">
+                            <h3>Choose source and destination</h3>
                             <div class="route-flow" id="route-flow-display">
                                 <div class="route-endpoint"><span class="re-label">Source</span><span class="re-val" id="route-source-label">G1</span></div>
                                 <div class="route-arrow-anim">↓</div>
@@ -243,23 +306,23 @@
                         </div>
 
                         <!-- Live Statistics -->
-                        <div class="dash-card glass-card">
-                            <h3>📊 Live Statistics</h3>
+                        <div class="dash-card glass-card watch-card">
+                            <h3>Grid health right now</h3>
                             <div class="live-stats-grid">
-                                <div class="live-stat"><span class="ls-val font-mono orange" id="stat-congested">0</span><span class="ls-lbl">Congested Lines</span></div>
-                                <div class="live-stat"><span class="ls-val font-mono red" id="val-failed-count">0</span><span class="ls-lbl">Failed Lines</span></div>
+                                <div class="live-stat"><span class="ls-val font-mono orange" id="stat-congested">0</span><span class="ls-lbl">Busy lines</span></div>
+                                <div class="live-stat"><span class="ls-val font-mono red" id="val-failed-count">0</span><span class="ls-lbl">Offline lines</span></div>
                                 <div class="live-stat"><span class="ls-val font-mono blue" id="stat-reroutes">0</span><span class="ls-lbl">Reroutes</span></div>
-                                <div class="live-stat"><span class="ls-val font-mono yellow" id="stat-avg-loss">—</span><span class="ls-lbl">Avg Loss</span></div>
-                                <div class="live-stat wide"><span class="ls-val font-mono" id="stat-avg-cong">—</span><span class="ls-lbl">Average Congestion</span></div>
-                                <div class="live-stat wide expert-only"><span class="ls-val font-mono cyan" id="val-cost">—</span><span class="ls-lbl">Route Cost (A*)</span></div>
-                                <div class="live-stat wide expert-only"><span class="ls-val font-mono green" id="val-improvement">—</span><span class="ls-lbl">Congestion Relief vs Naive</span></div>
-                                <div class="live-stat wide expert-only"><span class="ls-val font-mono purple" id="val-hops">—</span><span class="ls-lbl">Active Hops</span></div>
+                                <div class="live-stat"><span class="ls-val font-mono yellow" id="stat-avg-loss">—</span><span class="ls-lbl">Power loss estimate</span></div>
+                                <div class="live-stat wide"><span class="ls-val font-mono" id="stat-avg-cong">—</span><span class="ls-lbl">Overall traffic</span></div>
+                                <div class="live-stat wide expert-only"><span class="ls-val font-mono cyan" id="val-cost">—</span><span class="ls-lbl">Route score</span></div>
+                                <div class="live-stat wide expert-only"><span class="ls-val font-mono green" id="val-improvement">—</span><span class="ls-lbl">Improvement vs baseline</span></div>
+                                <div class="live-stat wide expert-only"><span class="ls-val font-mono purple" id="val-hops">—</span><span class="ls-lbl">Route steps</span></div>
                             </div>
                         </div>
 
                         <!-- Health Gauges -->
-                        <div class="dash-card glass-card">
-                            <h3>💚 Grid Health</h3>
+                        <div class="dash-card glass-card overview-secondary">
+                            <h3>Overall health</h3>
                             <div class="gauge-grid">
                                 <div class="gauge-item" data-gauge="transmission"><svg viewBox="0 0 80 80"><circle class="gauge-bg" cx="40" cy="40" r="32"/><circle class="gauge-fill" cx="40" cy="40" r="32" id="gauge-transmission"/></svg><span class="gauge-lbl">Transmission</span><span class="gauge-val font-mono" id="gauge-transmission-val">—</span></div>
                                 <div class="gauge-item" data-gauge="stability"><svg viewBox="0 0 80 80"><circle class="gauge-bg" cx="40" cy="40" r="32"/><circle class="gauge-fill" cx="40" cy="40" r="32" id="gauge-stability"/></svg><span class="gauge-lbl">Stability</span><span class="gauge-val font-mono" id="gauge-stability-val">—</span></div>
@@ -269,8 +332,8 @@
                         </div>
 
                         <!-- Weather Panel -->
-                        <div class="dash-card glass-card weather-card">
-                            <h3>🌤 Weather Conditions</h3>
+                        <div class="dash-card glass-card weather-card overview-secondary">
+                            <h3>Weather effect</h3>
                             <div class="weather-display" id="weather-display">
                                 <span class="weather-icon" id="weather-icon">☀️</span>
                                 <span class="weather-name" id="weather-name">Normal Day</span>
@@ -280,13 +343,13 @@
                 </div>
 
                 <!-- Bottom Dock -->
-                <footer class="bottom-dock">
+                <footer class="bottom-dock overview-dock">
                     <div class="dock-section timeline-section">
-                        <h4 class="dock-title">Event Timeline</h4>
+                        <h4 class="dock-title">Recent changes</h4>
                         <div class="event-timeline" id="event-timeline"></div>
                     </div>
                     <div class="dock-section controls-section">
-                        <h4 class="dock-title">Simulation Controls</h4>
+                        <h4 class="dock-title">Try different conditions</h4>
                         <div class="sim-controls">
                             <button class="btn btn-primary" id="btn-play" onclick="togglePlaySimulation()">▶ Start</button>
                             <button class="btn btn-secondary" id="btn-step" onclick="stepSimulation()">⏭ Step</button>
@@ -314,7 +377,7 @@
                     </div>
                     <div class="dock-section log-section">
                         <div class="log-header">
-                            <h4 class="dock-title">Event Log</h4>
+                        <h4 class="dock-title">Detailed notes</h4>
                             <button class="btn btn-dark btn-sm" onclick="exportLogsToCSV()">Export</button>
                         </div>
                         <div class="console-terminal font-mono" id="console-logs-feed">
@@ -387,7 +450,7 @@
             <div id="view-ml" class="view">
                 <div id="tab-content-ml" class="analytics-layout">
                     <div class="analytics-left">
-                        <div class="section-badge font-mono">🧠 MODEL PERFORMANCE</div>
+                    <div class="section-badge font-mono">ROUTE DECISION GUIDE</div>
                         <div class="metrics-grid">
                             <div class="metric-card glass-card cyan">
                                 <div class="metric-icon">📊</div>
@@ -416,10 +479,10 @@
                         </div>
                     </div>
                     <div class="analytics-right glass-card">
-                        <h3 class="card-heading text-cyan">💡 How AI Predictions Work</h3>
+                        <h3 class="card-heading text-cyan">How the forecast model helps</h3>
                         <div class="explainer-section">
-                            <h4>Plain Language Summary</h4>
-                            <p>The AI watches each power line's load, weather, and history to guess how busy it will get. When a line looks overloaded, the system reroutes power <em>before</em> a blackout happens.</p>
+                            <h4>Plain language summary</h4>
+                            <p>The forecast model estimates which lines may get too busy soon. The app uses that forecast to avoid risky lines when it chooses a route.</p>
                         </div>
                         <div class="explainer-section expert-only">
                             <h4>Technical Details</h4>
@@ -433,7 +496,7 @@
             <!-- ═══ VIEW: Analytics ═══ -->
             <div id="view-analytics" class="view">
                 <div class="analytics-page">
-                    <div class="section-badge font-mono">📈 GRID ANALYTICS</div>
+                    <div class="section-badge font-mono">GRID CHARTS</div>
                     <div class="analytics-charts-grid">
                         <div class="glass-card chart-card">
                             <h3>Congestion Heatmap</h3>
@@ -459,7 +522,7 @@
             <div id="view-topology" class="view">
                 <div id="tab-content-routes">
                     <div class="routing-layout-top">
-                        <div class="section-badge font-mono">📊 ROUTING COMPARISON</div>
+                        <div class="section-badge font-mono">ROUTE COMPARISON</div>
                         <div class="comparison-banner glass-card" id="comparison-banner">
                             <div class="cb-value font-mono text-green" id="cb-improvement">—</div>
                             <div class="cb-label">Congestion reduction: A* ML vs baseline Dijkstra</div>

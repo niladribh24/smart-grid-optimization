@@ -40,9 +40,9 @@ const SVG_HEIGHT = 420;
 
 // Node display — premium light theme palette
 const NODE_STYLES = {
-    generator: { fill: '#dc2626', stroke: '#b91c1c', shape: 'circle', size: 16 },
-    substation: { fill: '#d97706', stroke: '#b45309', shape: 'diamond', size: 13 },
-    consumer: { fill: '#0ea5e9', stroke: '#0284c7', shape: 'circle', size: 12 },
+    generator: { fill: '#34d399', stroke: '#059669', shape: 'circle', size: 16 },
+    substation: { fill: '#60a5fa', stroke: '#2563eb', shape: 'diamond', size: 13 },
+    consumer: { fill: '#fb923c', stroke: '#ea580c', shape: 'circle', size: 12 },
 };
 
 const WEATHER_MAP = {
@@ -66,8 +66,8 @@ function gridToSvg(x, y) {
 function getCongestionColor(score) {
     if (score >= 0.85) return '#ef4444';
     if (score >= 0.70) return '#f97316';
-    if (score >= 0.50) return '#eab308';
-    return '#10b981';
+    if (score >= 0.50) return '#facc15';
+    return '#4ade80';
 }
 
 function plainCongestion(score) {
@@ -110,8 +110,8 @@ function setupEventListeners() {
 
 function checkFirstTimeUser() {
     if (!localStorage.getItem('powergrid_tour_seen')) {
-        setTimeout(startOnboarding, 1200);
         localStorage.setItem('powergrid_tour_seen', 'true');
+        setTimeout(() => showToast('Need help? Open the guided tour from the top bar.', 'info'), 1200);
     }
 }
 
@@ -170,6 +170,7 @@ function hideLoading() {
 // Global render trigger
 function renderAll() {
     renderGrid();
+    renderPlainLanguageSummary();
     renderDashboardStats(pipelineData.dashboard);
     renderMLMetrics();
     renderFeatureImportance();
@@ -181,6 +182,83 @@ function renderAll() {
     renderAnalytics();
     renderMinimap();
     updateWeatherDisplay();
+}
+
+function describeCongestion(score) {
+    const pct = Math.round(score * 100);
+    if (score >= 0.85) return `This line is overloaded (${pct}%)`;
+    if (score >= 0.70) return `This line is getting risky (${pct}%)`;
+    if (score >= 0.50) return `This line is moderately busy (${pct}%)`;
+    return `This line is operating normally (${pct}%)`;
+}
+
+function describeStatus(score, failed) {
+    if (failed) return 'Offline';
+    if (score >= 0.85) return 'Critical';
+    if (score >= 0.70) return 'Warning';
+    return 'Healthy';
+}
+
+function renderPlainLanguageSummary() {
+    const route = currentRoute || pipelineData?.ml_route;
+    const edges = pipelineData?.grid?.edges || [];
+    const busy = edges.filter(edge => !edge.is_failed && edge.congestion_score >= 0.70).length;
+    const failed = edges.filter(edge => edge.is_failed).length;
+    const topRisk = [...edges]
+        .filter(edge => !edge.is_failed)
+        .sort((a, b) => b.congestion_score - a.congestion_score)[0];
+
+    const plainSummary = document.getElementById('plain-summary');
+    const plainCardSummary = document.getElementById('plain-card-summary');
+    const plainNextStep = document.getElementById('plain-next-step');
+    const plainTopRisk = document.getElementById('plain-top-risk');
+    const graphTitle = document.getElementById('graph-title');
+    const graphSubtitle = document.getElementById('graph-subtitle');
+    const graphSource = document.getElementById('graph-source');
+    const graphTarget = document.getElementById('graph-target');
+    const graphHealth = document.getElementById('graph-health');
+
+    let headline = `Power is currently routed from ${selectedSource} to ${selectedTarget}.`;
+    let detail = `There are ${busy} busy lines and ${failed} offline lines right now.`;
+    let nextStep = 'No action needed. The current route is stable.';
+    let health = failed > 0 ? 'Needs attention' : (busy > 0 ? 'Watch closely' : 'Stable');
+
+    if (!route || !route.path || route.path.length === 0) {
+        headline = `${selectedTarget} is currently isolated from ${selectedSource}.`;
+        detail = 'The app could not find a safe path through the grid.';
+        nextStep = 'Repair a line or pick a different destination.';
+        health = 'Route unavailable';
+    } else if (failed > 0) {
+        nextStep = 'A line is offline. Check whether the rerouted path still looks acceptable.';
+    } else if (busy > 0) {
+        nextStep = 'Watch the busiest line or run one simulation step to see if the path changes.';
+    }
+
+    if (plainSummary) plainSummary.textContent = `${headline} ${detail}`;
+    if (plainCardSummary) {
+        plainCardSummary.textContent = route && route.path
+            ? `Current path: ${route.path.join(' -> ')}`
+            : 'No current path is available.';
+    }
+    if (plainNextStep) plainNextStep.textContent = nextStep;
+    if (plainTopRisk) {
+        plainTopRisk.textContent = topRisk
+            ? `${topRisk.source} -> ${topRisk.target} at ${Math.round(topRisk.congestion_score * 100)}%`
+            : 'No high-risk line detected';
+    }
+    if (graphTitle) {
+        graphTitle.textContent = route && route.path
+            ? `${selectedSource} -> ${selectedTarget} uses ${route.num_hops} steps`
+            : `No safe route from ${selectedSource} to ${selectedTarget}`;
+    }
+    if (graphSubtitle) {
+        graphSubtitle.textContent = topRisk
+            ? `Highest pressure is on ${topRisk.source} -> ${topRisk.target}. Hover any line to see why it matters.`
+            : 'Hover a line or node to see what it does in the grid.';
+    }
+    if (graphSource) graphSource.textContent = selectedSource;
+    if (graphTarget) graphTarget.textContent = selectedTarget;
+    if (graphHealth) graphHealth.textContent = health;
 }
 
 // ─── SVG Map Rendering ───
@@ -213,9 +291,8 @@ function renderGrid() {
         if (!src || !tgt) return;
 
         const isLineFailed = edge.is_failed;
-        const color = isLineFailed ? '#cbd5e1' : getCongestionColor(edge.congestion_score);
-        const capacity = edge.capacity || 300;
-        const width = isLineFailed ? 2 : (1.5 + (edge.current_load || 0) / capacity * 5);
+        const color = isLineFailed ? '#0f172a' : getCongestionColor(edge.congestion_score);
+        const width = isLineFailed ? 2.5 : 2.2 + edge.congestion_score * 2.2;
 
         const routePath = (currentRoute || pipelineData.ml_route)?.path || [];
         const onRoute = routePath.some((n, i) => i < routePath.length - 1 &&
@@ -238,30 +315,21 @@ function renderGrid() {
         line.setAttribute('stroke', color);
         line.setAttribute('stroke-width', width);
         line.setAttribute('stroke-linecap', 'round');
-        line.setAttribute('opacity', isLineFailed ? '0.35' : '0.85');
+        line.setAttribute('opacity', isLineFailed ? '0.55' : (onRoute ? '0.95' : '0.72'));
+        line.setAttribute('stroke-dasharray', isLineFailed ? '8 6' : '0');
         line.setAttribute('class', edgeClass);
         line.dataset.source = edge.source;
         line.dataset.target = edge.target;
-        if (isLineFailed) line.setAttribute('filter', 'url(#glow-red)');
+        if (isLineFailed) {
+            line.setAttribute('filter', 'url(#glow-red)');
+        } else if (onRoute) {
+            line.setAttribute('filter', 'url(#glow-blue)');
+        }
 
         line.addEventListener('mouseenter', (e) => showEdgeTooltip(e, edge));
         line.addEventListener('mouseleave', hideEdgeTooltip);
         line.addEventListener('dblclick', () => toggleEdgeFailure(edge.source, edge.target));
         edgesLayer.appendChild(line);
-
-        // Flowing energy particles on healthy lines
-        if (!isLineFailed && edge.congestion_score < 0.85) {
-            const particle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            particle.setAttribute('r', '2');
-            particle.setAttribute('fill', color);
-            particle.setAttribute('opacity', '0.7');
-            const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animateMotion');
-            anim.setAttribute('dur', (2 + edge.congestion_score * 2) + 's');
-            anim.setAttribute('repeatCount', 'indefinite');
-            anim.setAttribute('path', `M ${src.svgX} ${src.svgY} L ${tgt.svgX} ${tgt.svgY}`);
-            particle.appendChild(anim);
-            edgesLayer.appendChild(particle);
-        }
 
         if (isLineFailed) {
             const mx = (src.svgX + tgt.svgX) / 2;
@@ -292,22 +360,22 @@ function renderGrid() {
             routeLine.setAttribute('y1', src.svgY);
             routeLine.setAttribute('x2', tgt.svgX);
             routeLine.setAttribute('y2', tgt.svgY);
-            routeLine.setAttribute('stroke', '#00ffcc');
-            routeLine.setAttribute('stroke-width', '8');
-            routeLine.setAttribute('stroke-dasharray', '12 8');
+            routeLine.setAttribute('stroke', '#38bdf8');
+            routeLine.setAttribute('stroke-width', '7');
+            routeLine.setAttribute('stroke-dasharray', '10 8');
             routeLine.setAttribute('stroke-linecap', 'round');
             routeLine.setAttribute('class', 'route-edge-anim');
-            routeLine.setAttribute('filter', 'url(#glow-green)');
+            routeLine.setAttribute('filter', 'url(#glow-blue)');
             routeLayer.appendChild(routeLine);
 
             // Moving glowing energy packets along active route path
             const pulse = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             pulse.setAttribute('r', '4.5');
-            pulse.setAttribute('fill', '#10b981');
-            pulse.setAttribute('filter', 'url(#glow-green)');
+            pulse.setAttribute('fill', '#e0f2fe');
+            pulse.setAttribute('filter', 'url(#glow-blue)');
             
             const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animateMotion');
-            anim.setAttribute('dur', '1.6s');
+            anim.setAttribute('dur', '1.9s');
             anim.setAttribute('repeatCount', 'indefinite');
             anim.setAttribute('path', `M ${src.svgX} ${src.svgY} L ${tgt.svgX} ${tgt.svgY}`);
             pulse.appendChild(anim);
@@ -351,13 +419,13 @@ function renderGrid() {
 
         shape.setAttribute('fill', style.fill);
         if (isSourceSelected) {
-            shape.setAttribute('stroke', '#047857');
+            shape.setAttribute('stroke', '#ffffff');
             shape.setAttribute('stroke-width', '4');
             shape.setAttribute('filter', 'url(#glow-green)');
         } else if (isTargetSelected) {
-            shape.setAttribute('stroke', '#059669');
+            shape.setAttribute('stroke', '#f8fafc');
             shape.setAttribute('stroke-width', '4');
-            shape.setAttribute('filter', 'url(#glow-green)');
+            shape.setAttribute('filter', 'url(#glow-blue)');
         } else {
             shape.setAttribute('stroke', style.stroke);
             shape.setAttribute('stroke-width', '2');
@@ -374,8 +442,8 @@ function renderGrid() {
             text.setAttribute('x', pos.svgX);
             text.setAttribute('y', pos.svgY + style.size + 14);
             text.setAttribute('text-anchor', 'middle');
-            text.setAttribute('fill', isSourceSelected ? '#047857' : (isTargetSelected ? '#059669' : '#64748b'));
-            text.setAttribute('font-size', '9');
+            text.setAttribute('fill', isSourceSelected ? '#dcfce7' : (isTargetSelected ? '#dbeafe' : '#cbd5e1'));
+            text.setAttribute('font-size', '10');
             text.setAttribute('font-weight', (isSourceSelected || isTargetSelected) ? '700' : '600');
             text.setAttribute('font-family', 'JetBrains Mono, monospace');
             text.textContent = n.id;
@@ -396,12 +464,12 @@ function showEdgeTooltip(e, edge) {
     tooltip.classList.add('visible');
     document.getElementById('tt-label').textContent = `${edge.source} ↔ ${edge.target}`;
     document.getElementById('tt-cong').textContent = userMode === 'beginner'
-        ? plainCongestion(edge.congestion_score)
+        ? describeCongestion(edge.congestion_score)
         : edge.congestion_score.toFixed(4);
     document.getElementById('tt-res').textContent = edge.resistance.toFixed(4) + ' Ω';
     document.getElementById('tt-len').textContent = edge.length_km.toFixed(1) + ' km';
     document.getElementById('tt-age').textContent = edge.age.toFixed(0) + ' yrs';
-    document.getElementById('tt-status').textContent = plainStatus(edge.congestion_score, edge.is_failed);
+    document.getElementById('tt-status').textContent = describeStatus(edge.congestion_score, edge.is_failed);
 
     tooltip.style.left = (e.clientX - rect.left + 15) + 'px';
     tooltip.style.top = (e.clientY - rect.top - 10) + 'px';

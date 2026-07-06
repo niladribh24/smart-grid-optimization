@@ -1,0 +1,35 @@
+Smart Grid Optimization - How to Run
+
+1. Install Python
+Use Python 3.10 or newer.
+
+2. Install dependencies
+Open a terminal in this project folder and run:
+
+python -m pip install -r requirements.txt
+
+3. Start the web app
+Run:
+
+python app.py
+
+4. Open the dashboard
+After the server starts, open:
+
+http://127.0.0.1:5000
+
+Notes
+
+- The main dashboard is the primary way to use the project.
+- The app trains the Random Forest model and builds the smart-grid graph automatically on startup.
+- Live weather support is included. If the weather API cannot be reached, the app will still run and return a weather error message instead of crashing.
+
+Optional commands
+
+- Retrain the model manually:
+  python train_model.py
+
+- Run the command-line simulator:
+  python simulator.py
+
+If `python` points to the wrong interpreter on your machine, use the full path to your installed Python executable instead.
