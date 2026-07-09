@@ -326,6 +326,13 @@ class PowerGrid:
                 wind_factor = np.clip(wind / 20.0, 0.2, 2.5)
                 features["renewable_generation"] = float(np.clip(features["renewable_generation"] * wind_factor + self.rng.normal(0, 15), 0, 300))
                 
+            elif scenario == "peak":
+                # Peak load scenario: evening demand surge with heavier consumer draw.
+                features["temperature"] = float(np.clip(self.rng.normal(31, 5), 12, 45))
+                features["weather"] = 1.0
+                load_multiplier = 1.55 + 0.18 * np.sin((hour - 17) * np.pi / 8)
+                features["historical_load"] = float(np.clip(features["historical_load"] * load_multiplier + self.rng.normal(0, 30), 280, 680))
+                features["renewable_generation"] = float(np.clip(features["renewable_generation"] * 0.9 + self.rng.normal(0, 14), 0, 210))
             elif scenario == "heatwave":
                 # Heatwave scenario: Extreme temperature, high customer load due to AC units
                 features["temperature"] = float(self.rng.normal(42.0, 2.0))

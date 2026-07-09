@@ -70,12 +70,24 @@
 }
 
 #view-dashboard .ops-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
-    gap: 14px;
+    display: block;
     padding: 12px 10px 0;
     flex: 1 1 auto;
     min-height: 0;
+    overflow-y: auto;
+}
+
+#view-dashboard .right-panel {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(230px, 1fr));
+    gap: 12px;
+    overflow: visible;
+    padding-right: 0;
+}
+
+#view-dashboard .status-card,
+#view-dashboard .guide-card {
+    grid-column: span 3;
 }
 
 .graph-column {
@@ -263,6 +275,54 @@
     padding-right: 2px;
 }
 
+.grid-map-page {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px;
+}
+
+.grid-map-header {
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    flex-shrink: 0;
+}
+
+.grid-map-header h2 {
+    margin: 5px 0 4px;
+    font-size: 1.15rem;
+    color: #f8fafc;
+}
+
+.grid-map-header p {
+    color: #d7e6ec;
+    font-size: 0.9rem;
+}
+
+.grid-map-host {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+}
+
+.grid-map-host .graph-column {
+    flex: 1;
+    min-height: 0;
+}
+
+.grid-map-host .graph-story-card {
+    display: none;
+}
+
+.grid-map-host .svg-viewport {
+    min-height: 620px;
+}
+
 .dash-card {
     padding: 14px;
     border-radius: 14px !important;
@@ -404,6 +464,90 @@
     overflow-y: auto !important;
 }
 
+.working-status {
+    display: grid;
+    grid-template-columns: auto auto auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 9px 10px;
+    border-radius: 10px;
+    background: rgba(8, 19, 31, 0.58);
+    border: 1px solid rgba(148, 197, 255, 0.12);
+    color: #dbe7ef;
+    font-size: 0.75rem;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.working-status.updated {
+    border-color: rgba(96, 242, 223, 0.42);
+    background: rgba(20, 74, 83, 0.42);
+}
+
+.working-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(103, 229, 163, 0.14);
+    color: #c7f9dc;
+    border: 1px solid rgba(103, 229, 163, 0.22);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.working-route {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #f8fafc;
+}
+
+.event-timeline {
+    gap: 5px;
+}
+
+.timeline-event {
+    border-radius: 8px;
+    padding: 6px 8px;
+    background: rgba(9, 27, 42, 0.34);
+    border: 1px solid rgba(148, 197, 255, 0.08);
+}
+
+.simple-info-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(5, 14, 24, 0.72);
+}
+
+.simple-info-overlay.hidden {
+    display: none;
+}
+
+.simple-info-card {
+    width: min(460px, 100%);
+    padding: 18px;
+}
+
+.simple-info-body {
+    display: grid;
+    gap: 10px;
+    color: #d7e6ec;
+    font-size: 0.92rem;
+    line-height: 1.5;
+}
+
+.info-bubble {
+    cursor: pointer;
+}
+
 .timeline-section {
     background: rgba(17, 38, 53, 0.92);
     border-radius: 14px;
@@ -420,8 +564,13 @@
 }
 
 @media (max-width: 1220px) {
-    #view-dashboard .ops-layout {
-        grid-template-columns: minmax(0, 1fr) 320px;
+    #view-dashboard .right-panel {
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+    }
+
+    #view-dashboard .status-card,
+    #view-dashboard .guide-card {
+        grid-column: span 2;
     }
 }
 
@@ -436,12 +585,7 @@
         justify-content: flex-start;
     }
 
-    #view-dashboard .ops-layout {
-        grid-template-columns: 1fr;
-    }
-
-    .right-panel {
-        display: grid;
+    #view-dashboard .right-panel {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
@@ -477,7 +621,22 @@
         margin: 0 12px 12px;
     }
 
+    #view-dashboard .right-panel,
     .right-panel {
+        grid-template-columns: 1fr;
+    }
+
+    #view-dashboard .status-card,
+    #view-dashboard .guide-card {
+        grid-column: span 1;
+    }
+
+    .grid-map-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .working-status {
         grid-template-columns: 1fr;
     }
 

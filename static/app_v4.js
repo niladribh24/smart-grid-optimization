@@ -580,10 +580,9 @@ async function computeRoute() {
         currentRoute = data.ml_route;
         pipelineData.ml_route = data.ml_route;
         pipelineData.naive_route = data.naive_route;
+        pipelineData.dashboard = data.dashboard;
 
-        renderGrid();
-        renderDashboardStats(data.dashboard);
-        renderRouteComparison();
+        renderAll();
 
         addLogEntry(`Custom routing complete from ${source} to ${target}. Hops: ${data.ml_route ? data.ml_route.num_hops : 0}`, 'success');
     } catch (err) {
@@ -617,6 +616,7 @@ async function toggleEdgeFailure(u, v) {
         // Cache response state
         pipelineData.grid.edges = data.grid.edges;
         pipelineData.edges_by_congestion = data.edges_by_congestion;
+        pipelineData.dashboard = data.dashboard;
         currentRoute = data.route;
 
         renderAll();
@@ -708,6 +708,7 @@ async function runSimulationTick() {
         // Sync local grid state with simulated state
         pipelineData.grid.edges = data.grid.edges;
         pipelineData.edges_by_congestion = data.edges_by_congestion;
+        pipelineData.dashboard = data.dashboard;
         currentRoute = data.route;
         simulationTick = data.tick;
 
@@ -717,7 +718,10 @@ async function runSimulationTick() {
 
         renderAll();
 
-        addLogEntry(`[Tick: ${data.tick} | Hour: ${timeStr}] Scenario: ${currentScenario.toUpperCase()}. Load randomized. Mean congestion: ${data.dashboard.average_congestion.toFixed(3)}`, 'info');
+        updateWorkingStatus(data, timeStr);
+        if (data.tick % 4 === 0) {
+            addLogEntry(`Tick ${data.tick}: ${currentScenario.toUpperCase()} load updated. Mean congestion ${(data.dashboard.average_congestion * 100).toFixed(0)}%.`, 'info');
+        }
 
         // Log faults
         if (data.failed_this_tick && data.failed_this_tick.length > 0) {
@@ -751,6 +755,31 @@ function stepSimulation() {
     runSimulationTick();
 }
 
+function updateWorkingStatus(data, timeStr) {
+    const status = document.getElementById('working-status');
+    if (!status) return;
+
+    const failedCount = data.failed_this_tick?.length || 0;
+    const avg = Math.round((data.dashboard?.average_congestion || 0) * 100);
+    const routePath = data.route?.path?.join(' -> ') || 'No active route';
+    const state = data.destination_isolated
+        ? 'Destination isolated'
+        : failedCount > 0
+            ? `${failedCount} line update${failedCount > 1 ? 's' : ''}`
+            : data.path_changed
+                ? 'Route changed'
+                : 'Stable update';
+
+    status.innerHTML = `
+        <span class="working-pill">${state}</span>
+        <span>Tick ${data.tick} at ${timeStr}</span>
+        <span>Average load ${avg}%</span>
+        <span class="working-route">${routePath}</span>
+    `;
+    status.classList.add('updated');
+    setTimeout(() => status.classList.remove('updated'), 500);
+}
+
 function resetSimulation() {
     if (isSimulating) {
         togglePlaySimulation();
@@ -778,13 +807,13 @@ function adjustSpeed(val) {
 }
 
 function injectScenario(type) {
-    currentScenario = type === 'peak' ? 'normal' : type;
+    currentScenario = type;
     if (type === 'windy') currentScenario = 'storm';
     if (type === 'live') currentScenario = 'live';
 
-    document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
-    const btn = document.querySelector(`.scenario-btn[data-scenario="${type}"]`);
-    if (btn) btn.classList.add('active');
+    document.querySelectorAll('.scenario-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.scenario === type);
+    });
 
     updateWeatherDisplay(type);
     addLogEntry(`Scenario: ${WEATHER_MAP[type]?.name || type}`, 'system');
@@ -1098,7 +1127,7 @@ function resetHealingDemo() {
     document.getElementById('hr-newpath').textContent = '—';
     document.getElementById('hr-newcost').textContent = '—';
 
-    renderGrid();
+    if (pipelineData?.grid) renderGrid();
 }
 
 // ─── Congestion Heatmap Table ───
@@ -1378,7 +1407,7 @@ function setUserMode(mode) {
     if (hint) hint.textContent = mode === 'beginner'
         ? 'Click nodes to set route · Double-click lines to test failures · Try Beginner-friendly tooltips!'
         : 'Click nodes to route · Double-click lines to fail/repair · Expert metrics enabled';
-    renderGrid();
+    if (pipelineData?.grid) renderGrid();
 }
 
 function showToast(message, type = 'info') {

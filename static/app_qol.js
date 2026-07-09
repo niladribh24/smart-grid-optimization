@@ -62,6 +62,99 @@
         return currentRoute || pipelineData?.ml_route || null;
     }
 
+    function installGridTab() {
+        if (document.getElementById("view-grid")) return;
+
+        const dashboardNav = document.querySelector('.nav-item[data-view="dashboard"]');
+        if (dashboardNav) {
+            const gridNav = dashboardNav.cloneNode(true);
+            gridNav.dataset.view = "grid";
+            gridNav.title = "Grid map";
+            gridNav.setAttribute("onclick", "switchView('grid')");
+            const icon = gridNav.querySelector(".nav-icon");
+            const label = gridNav.querySelector(".nav-label");
+            if (icon) icon.textContent = "#";
+            if (label) label.textContent = "Grid map";
+            dashboardNav.insertAdjacentElement("afterend", gridNav);
+        }
+
+        const gridColumn = document.querySelector("#view-dashboard .graph-column");
+        const mainArea = document.querySelector(".main-area");
+        if (!gridColumn || !mainArea) return;
+
+        const gridView = document.createElement("div");
+        gridView.id = "view-grid";
+        gridView.className = "view";
+        gridView.innerHTML = `
+            <div class="grid-map-page">
+                <div class="grid-map-header glass-card">
+                    <div>
+                        <div class="brief-kicker">Grid map</div>
+                        <h2>Transmission grid</h2>
+                        <p>The map has its own workspace now, so the topology keeps the same proportions while the overview stays readable.</p>
+                    </div>
+                    <div class="brief-actions">
+                        <button class="btn btn-primary btn-sm" onclick="focusActiveRoute()">Focus active route</button>
+                        <button class="btn btn-dark btn-sm" onclick="resetGraphView()">Reset view</button>
+                    </div>
+                </div>
+                <div class="grid-map-host"></div>
+            </div>
+        `;
+
+        const dashboard = document.getElementById("view-dashboard");
+        dashboard.insertAdjacentElement("afterend", gridView);
+        gridView.querySelector(".grid-map-host").appendChild(gridColumn);
+    }
+
+    function installSimpleInfo() {
+        if (!document.getElementById("simple-info-overlay")) {
+            const overlay = document.createElement("div");
+            overlay.id = "simple-info-overlay";
+            overlay.className = "simple-info-overlay hidden";
+            overlay.innerHTML = `
+                <div class="simple-info-card glass-card" role="dialog" aria-modal="true" aria-label="Grid dashboard info">
+                    <div class="modal-header">
+                        <h3>Info</h3>
+                        <button class="close-btn" type="button" data-simple-info-close>Close</button>
+                    </div>
+                    <div class="simple-info-body">
+                        <p><strong>Grid map:</strong> open the Grid map tab to inspect the network without squeezing the overview.</p>
+                        <p><strong>Scenarios:</strong> changing a scenario runs one clean update and refreshes the charts.</p>
+                        <p><strong>Charts:</strong> health status shows healthy, warning, critical, and failed lines from the latest grid state.</p>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            overlay.addEventListener("click", (event) => {
+                if (event.target === overlay || event.target.matches("[data-simple-info-close]")) {
+                    overlay.classList.add("hidden");
+                }
+            });
+        }
+
+        window.startOnboarding = function () {
+            document.getElementById("simple-info-overlay")?.classList.remove("hidden");
+        };
+
+        document.querySelectorAll(".info-bubble").forEach((bubble) => {
+            const text = bubble.dataset.tooltip || "More information";
+            bubble.setAttribute("role", "button");
+            bubble.setAttribute("tabindex", "0");
+            bubble.setAttribute("title", text);
+            const show = () => {
+                if (typeof showToast === "function") showToast(text, "info");
+            };
+            bubble.addEventListener("click", show);
+            bubble.addEventListener("keydown", (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    show();
+                }
+            });
+        });
+    }
+
     function applyPlainLanguageUI() {
         const route = getCurrentRoute();
         const edges = pipelineData?.grid?.edges || [];
@@ -311,6 +404,8 @@
     };
 
     window.addEventListener("DOMContentLoaded", () => {
+        installGridTab();
+        installSimpleInfo();
         simplifyStaticCopy();
         setTimeout(applyDefaultGraphFocus, 300);
     });
